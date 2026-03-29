@@ -79,6 +79,7 @@ OAuth2 Client 模式
 拦截 (Intercept)：网关发现用户未登录，通过 HTTP 302 重定向到 Casdoor 认证中心。
 
 认证 (Auth)：用户在 Casdoor 完成登录（支持账号密码、微信、GitHub等）。
+http://localhost:8281/login/oauth2/code/casdoor?code=c299573ff****************c9da29&state=JtRB3zHi29fAl8ykmvNsdMpqoWVS9XS-3X2YiA1MdiQ=
 
 回调 (Callback)：Casdoor 将授权码 (Code) 发回给网关。
 

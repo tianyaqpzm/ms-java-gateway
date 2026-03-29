@@ -25,10 +25,18 @@ spring:
             - StripPrefix=2
 
         # Agent Route: Forward /rest/dark/v1/agent/** to python-agent
-        - id: agent-route
-          uri: lb://python-agent
+        # - id: agent-route
+        #   uri: lb://python-agent
+        #   predicates:
+        #     - Path=/rest/dark/v1/agent/**
+        #   filters:
+        #     - StripPrefix=0
+
+        # TimeKeeper Route: Forward /rest/dark/v1/time-limit-events/** to ai-langchain4j (业务后端)
+        - id: timekeeper-route
+          uri: lb://ai-langchain4j
           predicates:
-            - Path=/rest/dark/v1/agent/**
+            - Path=/rest/dark/v1/**
           filters:
             - StripPrefix=0
         
@@ -74,3 +82,6 @@ logging:
 app:
   # 本地运行的 Angular 默认地址
   frontend-url: http://localhost:3000
+  jwt:
+    # openssl rand -base64 32
+    secret: your-256-bit-secret-your-256-bit-secret

@@ -1,9 +1,7 @@
 package com.dark.gateway.filter;
 
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
-import lombok.extern.slf4j.Slf4j;
-
+import java.nio.charset.StandardCharsets;
+import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
@@ -14,14 +12,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.stereotype.Component;
-import org.springframework.web.server.ServerWebExchange;
-import reactor.core.publisher.Mono;
-
-import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
-
 import org.springframework.util.AntPathMatcher;
 import org.springframework.util.PathMatcher;
+import org.springframework.web.server.ServerWebExchange;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+import lombok.extern.slf4j.Slf4j;
+import reactor.core.publisher.Mono;
 
 @Slf4j
 @Component
@@ -29,8 +26,8 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
     private final PathMatcher pathMatcher = new AntPathMatcher();
 
-    // In production, move this to config/Nacos
-    private static final String SECRET = "your-256-bit-secret-your-256-bit-secret";
+    @org.springframework.beans.factory.annotation.Value("${app.jwt.secret}")
+    private String jwtSecret;
 
     @Autowired
     private IgnoreWhiteProperties ignoreWhiteProperties; // 注入白名单配置
@@ -52,16 +49,26 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             return chain.filter(exchange);
         }
 
-        if (!request.getHeaders().containsKey(HttpHeaders.AUTHORIZATION)) {
-            return onError(exchange, "Missing Authorization Header", HttpStatus.UNAUTHORIZED);
+        String token = null;
+
+        // 1. 优先尝试从 HttpOnly Cookie 中获取 (浏览器环境)
+        org.springframework.http.HttpCookie cookie = request.getCookies().getFirst("jwt_token");
+        if (cookie != null) {
+            token = cookie.getValue();
+        }
+        // 2. 兜底策略：从 Authorization Header 中获取 (给 Python Agent 或 API 调用使用)
+        else {
+            String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                token = authHeader.substring(7);
+            }
         }
 
-        String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return onError(exchange, "Invalid Authorization Header", HttpStatus.UNAUTHORIZED);
+        // 3. 如果什么都没拿到，返回 401 触发重定向重新登录
+        if (token == null) {
+            return onError(exchange, "Missing Authorization Cookie or Header",
+                    HttpStatus.UNAUTHORIZED);
         }
-
-        String token = authHeader.substring(7);
         try {
             validateToken(token);
             // Optionally parse claims and add to headers
@@ -76,7 +83,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
     }
 
     private void validateToken(String token) {
-        SecretKey key = Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8));
+        SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
         Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token);
     }
 
@@ -85,7 +92,8 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         response.setStatusCode(httpStatus);
 
         // Return JSON error with redirect URL
-        String jsonResponse = String.format("{\"url\": \"%s\", \"message\": \"%s\"}", loginUrl, err);
+        String jsonResponse =
+                String.format("{\"url\": \"%s\", \"message\": \"%s\"}", loginUrl, err);
         byte[] bytes = jsonResponse.getBytes(StandardCharsets.UTF_8);
         DataBuffer buffer = response.bufferFactory().wrap(bytes);
         response.getHeaders().add("Content-Type", "application/json");
