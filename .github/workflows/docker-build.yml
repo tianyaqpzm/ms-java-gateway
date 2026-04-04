@@ -73,7 +73,7 @@ jobs:
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.VPS_USERNAME }} 
-          password: ${{ secrets.VPS_PASSWORD }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.PORT || 22 }}
           script: |
             # 停止并删除旧容器
