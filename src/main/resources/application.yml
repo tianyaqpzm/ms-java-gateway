@@ -28,14 +28,15 @@ spring:
             - StripPrefix=2
 
         # Agent Route: Forward /rest/dark/v1/agent/** to python-agent
-        # - id: agent-route
-        #   uri: lb://python-agent
-        #   predicates:
-        #     - Path=/rest/dark/v1/agent/**
-        #   filters:
-        #     - StripPrefix=0
+        # ⚠️ 必须在 timekeeper-route 之前声明，否则 /rest/dark/v1/** 会先匹配
+        - id: agent-route
+          uri: lb://python-agent
+          predicates:
+            - Path=/rest/dark/v1/agent/**
+          filters:
+            - StripPrefix=0
 
-        # TimeKeeper Route: Forward /rest/dark/v1/time-limit-events/** to ai-langchain4j (业务后端)
+        # TimeKeeper Route: Forward /rest/dark/v1/** to ai-langchain4j (业务后端)
         - id: timekeeper-route
           uri: lb://ai-langchain4j
           predicates:
