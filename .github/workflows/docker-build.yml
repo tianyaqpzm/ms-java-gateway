@@ -87,7 +87,9 @@ jobs:
             docker run -d \
               --name api-gateway \
               --restart unless-stopped \
-              -p 8281:8281 \
+              --network pei-network \
+              --expose 8281 \
+              --add-host "tao-lan.122577.xyz:host-gateway" \
               -e TZ=Asia/Shanghai \
               -e NACOS_SERVER_ADDR=${{ secrets.NACOS_SERVER_ADDR }} \
               -e NACOS_USERNAME=${{ secrets.NACOS_USERNAME }} \
