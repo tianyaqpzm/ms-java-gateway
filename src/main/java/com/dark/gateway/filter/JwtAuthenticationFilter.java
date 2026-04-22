@@ -16,6 +16,7 @@ import org.springframework.util.AntPathMatcher;
 import org.springframework.util.PathMatcher;
 import org.springframework.web.server.ServerWebExchange;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
@@ -70,10 +71,23 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
                     HttpStatus.UNAUTHORIZED);
         }
         try {
-            validateToken(token);
-            // Optionally parse claims and add to headers
-            // Claims claims = parseToken(token);
-            // request.mutate().header("X-UserId", claims.getSubject()).build();
+            Claims claims = validateAndParseToken(token);
+            
+            // Extract standard fields, assuming Cardoor uses standard claims like sub, name, etc.
+            String userId = claims.getSubject();
+            String username = claims.get("name", String.class);
+            if (username == null) username = claims.get("username", String.class);
+            String avatar = claims.get("picture", String.class);
+            if (avatar == null) avatar = claims.get("avatar", String.class);
+
+            // Mutate the request, pass the downstream headers cleanly
+            ServerHttpRequest mutatedRequest = request.mutate()
+                    .header("X-User-Id", userId != null ? userId : "")
+                    .header("X-User-Name", username != null ? username : "")
+                    .header("X-User-Avatar", avatar != null ? avatar : "")
+                    .build();
+            
+            exchange = exchange.mutate().request(mutatedRequest).build();
         } catch (Exception e) {
             log.error("Token validation failed: {}", e.getMessage());
             return onError(exchange, "Invalid Token", HttpStatus.UNAUTHORIZED);
@@ -82,9 +96,9 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         return chain.filter(exchange);
     }
 
-    private void validateToken(String token) {
+    private Claims validateAndParseToken(String token) {
         SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
-        Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token);
+        return Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token).getBody();
     }
 
     private Mono<Void> onError(ServerWebExchange exchange, String err, HttpStatus httpStatus) {
