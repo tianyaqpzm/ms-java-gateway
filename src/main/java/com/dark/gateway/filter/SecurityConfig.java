@@ -33,6 +33,9 @@ public class SecurityConfig {
     @Value("${app.jwt.secret}")
     private String jwtSecret;
 
+    @Value("${app.cookie-domain}")
+    private String cookieDomain;
+
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
         http
@@ -76,6 +79,7 @@ public class SecurityConfig {
                             response.addCookie(ResponseCookie.from("jwt_token", token)
                                     .httpOnly(true)
                                     .path("/")
+                                    .domain(cookieDomain) // 设置二级域名共享
                                     .maxAge(Duration.ofDays(7))
                                     .build());
 
