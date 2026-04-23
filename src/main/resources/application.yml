@@ -87,7 +87,7 @@ logging:
     org.springframework.web: DEBUG
 app:
   # 本地运行的 Angular 默认地址
-  frontend-url: http://localhost:3000
+  frontend-url: ${FRONTEND_URL}
   jwt:
     # openssl rand -base64 32
-    secret: your-256-bit-secret-your-256-bit-secret
+    secret: ${JWT_SECRET}
