@@ -73,7 +73,7 @@ spring:
           casdoor:
             provider: casdoor
             client-id: df6a2403823b8f014be5
-            client-secret: ${CASDOOR_SECRET}
+            client-secret: ${CASDOOR_SECRET:1234567890}
             authorization-grant-type: authorization_code
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
             scope: openid,profile,email
