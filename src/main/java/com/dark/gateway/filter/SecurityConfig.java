@@ -18,8 +18,13 @@ import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.ServerAuthenticationEntryPoint;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.web.server.WebFilter;
 import reactor.core.publisher.Mono;
 
+@Slf4j
 @Configuration
 public class SecurityConfig {
 
@@ -41,11 +46,16 @@ public class SecurityConfig {
         http
                 // 1. 路由权限配置 (Lambda 写法)
                 .authorizeExchange(
-                        exchanges -> exchanges.pathMatchers("/api/public/**", "/favicon.ico", "/actuator/**")
+                        exchanges -> exchanges.pathMatchers("/api/public/**", "/favicon.ico", "/actuator/**", "/login/**", "/error", "/oauth2/**")
                                 .permitAll().anyExchange().authenticated())
                 // 2. OAuth2 登录配置 (✅ 最新 Lambda DSL 写法)
                 // 使用 Customizer.withDefaults() 启用默认的 OAuth2 登录流程
                 .oauth2Login(oauth2 -> oauth2
+                        // 👇 处理登录失败
+                        .authenticationFailureHandler((webFilterExchange, exception) -> {
+                            log.error("【OAuth2 登录失败】原因: {}", exception.getMessage(), exception);
+                            return Mono.error(exception);
+                        })
                         // 👇 完全自定义的成功处理器
                         .authenticationSuccessHandler((webFilterExchange, authentication) -> {
                             OAuth2User oAuth2User = (OAuth2User) authentication.getPrincipal();
@@ -108,6 +118,7 @@ public class SecurityConfig {
 
     private ServerAuthenticationEntryPoint serverAuthenticationEntryPoint() {
         return (exchange, e) -> {
+            log.warn("【未授权访问】Path: {}, Reason: {}", exchange.getRequest().getURI().getPath(), e.getMessage());
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
             exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
             String jsonResponse = String.format(
@@ -115,6 +126,21 @@ public class SecurityConfig {
             byte[] bytes = jsonResponse.getBytes(StandardCharsets.UTF_8);
             DataBuffer buffer = exchange.getResponse().bufferFactory().wrap(bytes);
             return exchange.getResponse().writeWith(Mono.just(buffer));
+        };
+    }
+
+    // 增加请求头日志打印，帮助排查 Nginx 转发参数
+    @Bean
+    @Order(Ordered.HIGHEST_PRECEDENCE)
+    public WebFilter logFilter() {
+        return (exchange, chain) -> {
+            var request = exchange.getRequest();
+            log.info("【网关接受请求】Path: {}, Host: {}, X-Forwarded-Port: {}, X-Forwarded-Proto: {}",
+                    request.getURI().getPath(),
+                    request.getHeaders().getFirst("Host"),
+                    request.getHeaders().getFirst("X-Forwarded-Port"),
+                    request.getHeaders().getFirst("X-Forwarded-Proto"));
+            return chain.filter(exchange);
         };
     }
 }
