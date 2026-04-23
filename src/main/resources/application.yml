@@ -1,5 +1,7 @@
 server:
   port: 8281
+  # 告诉 Spring 信任 Nginx 传来的 X-Forwarded-* 头部
+  forward-headers-strategy: native
 management:
   endpoints:
     web:
@@ -71,14 +73,14 @@ spring:
           casdoor:
             provider: casdoor
             client-id: df6a2403823b8f014be5
-            client-secret: 97d49db301cd4f5cbc37cd052917e7ee3b0c1c66
+            client-secret: ${CASDOOR_SECRET}
             authorization-grant-type: authorization_code
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
             scope: openid,profile,email
         provider:
           casdoor:
             # Casdoor 的 OIDC 发现地址 (Discovery Endpoint)
-            issuer-uri: http://tao-lan.122577.xyz:8381
+            issuer-uri: https://tao-lan.122577.xyz:8381
 logging:
   level:
     org.springframework.security: DEBUG
