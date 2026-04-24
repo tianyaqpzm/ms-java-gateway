@@ -4,6 +4,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Date;
+import javax.annotation.PostConstruct;
 import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -13,9 +14,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.oauth2.client.endpoint.OAuth2AuthorizationCodeGrantRequest;
+import org.springframework.security.oauth2.client.endpoint.ReactiveOAuth2AccessTokenResponseClient;
+import org.springframework.security.oauth2.client.endpoint.WebClientReactiveAuthorizationCodeTokenResponseClient;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.ServerAuthenticationEntryPoint;
+import org.springframework.web.reactive.function.client.WebClient;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
@@ -41,6 +46,16 @@ public class SecurityConfig {
     @Value("${app.cookie-domain}")
     private String cookieDomain;
 
+    @Value("${spring.security.oauth2.client.registration.casdoor.client-secret:}")
+    private String casdoorClientSecret;
+
+    @PostConstruct
+    public void init() {
+        log.info("【系统初始化】Casdoor Client Secret: {}", casdoorClientSecret);
+        log.info("【系统初始化】JWT Secret: {}", jwtSecret);
+        log.info("【系统初始化】Cookie Domain: {}", cookieDomain);
+    }
+
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
         http
@@ -51,6 +66,8 @@ public class SecurityConfig {
                 // 2. OAuth2 登录配置 (✅ 最新 Lambda DSL 写法)
                 // 使用 Customizer.withDefaults() 启用默认的 OAuth2 登录流程
                 .oauth2Login(oauth2 -> oauth2
+                        // 👇 关键：增加 Token 请求客户端的日志打印
+                        .tokenResponseClient(customTokenResponseClient())
                         // 👇 处理登录失败
                         .authenticationFailureHandler((webFilterExchange, exception) -> {
                             log.error("【OAuth2 登录失败】原因: {}", exception.getMessage(), exception);
@@ -127,6 +144,20 @@ public class SecurityConfig {
             DataBuffer buffer = exchange.getResponse().bufferFactory().wrap(bytes);
             return exchange.getResponse().writeWith(Mono.just(buffer));
         };
+    }
+
+    private ReactiveOAuth2AccessTokenResponseClient<OAuth2AuthorizationCodeGrantRequest> customTokenResponseClient() {
+        WebClientReactiveAuthorizationCodeTokenResponseClient client = new WebClientReactiveAuthorizationCodeTokenResponseClient();
+        client.setWebClient(WebClient.builder()
+                .filter((request, next) -> {
+                    log.info("【Token 交换请求】URL: {}, Method: {}", request.url(), request.method());
+                    log.info("【Token 交换请求】Headers: {}", request.headers());
+                    // 打印正在使用的 Client Secret (从配置中读取的)
+                    log.info("【Token 交换请求】正在尝试使用 Client Secret: {}", casdoorClientSecret);
+                    return next.exchange(request);
+                })
+                .build());
+        return client;
     }
 
     // 增加请求头日志打印，帮助排查 Nginx 转发参数
