@@ -21,7 +21,6 @@ import org.springframework.security.web.server.ServerAuthenticationEntryPoint;
 import org.springframework.web.server.WebFilter;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 
@@ -42,16 +41,6 @@ public class SecurityConfig {
     @Value("${app.cookie-domain}")
     private String cookieDomain;
 
-    @Value("${spring.security.oauth2.client.registration.casdoor.client-secret:}")
-    private String casdoorClientSecret;
-
-    @PostConstruct
-    public void init() {
-        log.info("【系统初始化】Casdoor Client Secret: {}", casdoorClientSecret);
-        log.info("【系统初始化】JWT Secret: {}", jwtSecret);
-        log.info("【系统初始化】Cookie Domain: {}", cookieDomain);
-    }
-
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
         http
@@ -66,9 +55,7 @@ public class SecurityConfig {
                 .oauth2Login(oauth2 -> oauth2
                         // 👇 处理登录失败
                         .authenticationFailureHandler((webFilterExchange, exception) -> {
-                            log.error("【OAuth2 登录失败】原因: {}", exception.getMessage(), exception);
-                            log.error("【OAuth2 诊断】当前正在使用的 Casdoor Client Secret: {}",
-                                    casdoorClientSecret);
+                            log.error("【OAuth2 登录失败】原因: {}", exception.getMessage());
                             return Mono.error(exception);
                         })
                         // 👇 完全自定义的成功处理器
@@ -113,8 +100,16 @@ public class SecurityConfig {
                                 session.getAttributes().remove("CUSTOM_REDIRECT_URI");
 
                                 // 3. 执行真正的 302 重定向，把用户送回原页面
+                                // 🔥【优化】同时把 token 带在 URL 上，方便前端获取并存入 localStorage
+                                String finalRedirectUri = redirectUri;
+                                if (finalRedirectUri.contains("?")) {
+                                    finalRedirectUri += "&token=" + token;
+                                } else {
+                                    finalRedirectUri += "?token=" + token;
+                                }
+
                                 response.setStatusCode(HttpStatus.FOUND);
-                                response.getHeaders().setLocation(URI.create(redirectUri));
+                                response.getHeaders().setLocation(URI.create(finalRedirectUri));
                                 return response.setComplete();
                             });
                         }))
