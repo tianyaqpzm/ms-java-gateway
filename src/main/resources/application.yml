@@ -6,9 +6,10 @@ management:
   endpoints:
     web:
       base-path: "/actuator" # 这样访问路径就会变成 /actuator/health
+      exposure:
+        include: 'health'
+
 spring:
-  application:
-    name: gateway
   cloud:
     nacos:
       discovery:
@@ -73,7 +74,7 @@ spring:
           casdoor:
             provider: casdoor
             client-id: df6a2403823b8f014be5
-            client-secret: ${CASDOOR_SECRET}
+            client-secret: ${CASDOOR_SECRET:1234567890}
             authorization-grant-type: authorization_code
             redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
             scope: openid,profile,email

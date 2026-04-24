@@ -3,8 +3,10 @@ name: Build API Gateway DockerImage
 on:
   push:
     branches:
-      - master  # 主分支提交时触发
-
+      - master
+  pull_request:
+    branches:
+      - master  # 向主分支发起PR时触发
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -56,7 +58,7 @@ jobs:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
@@ -66,7 +68,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/master') ||
+      (github.event_name == 'pull_request' && github.base_ref == 'master' && startsWith(github.head_ref, 'feature_'))
     steps:
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1.0.3
@@ -81,7 +85,7 @@ jobs:
             docker rm api-gateway || true
             
             # 拉取最新镜像
-            docker pull tianyaqpzm/api-gateway:master
+            docker pull tianyaqpzm/api-gateway:${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.number) || 'master' }}
             
             # 启动新容器
             docker run -d \
@@ -95,7 +99,7 @@ jobs:
               -e NACOS_USERNAME=${{ secrets.NACOS_USERNAME }} \
               -e NACOS_PASSWORD=${{ secrets.NACOS_PASSWORD }} \
               -e NACOS_NAMESPACE=${{ vars.NACOS_NAMESPACE }} \
-              tianyaqpzm/api-gateway:master
+              tianyaqpzm/api-gateway:${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.number) || 'master' }}
             
             # 清理无用镜像
             docker image prune -f

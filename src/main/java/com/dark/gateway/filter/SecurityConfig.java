@@ -8,6 +8,8 @@ import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -16,10 +18,13 @@ import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.ServerAuthenticationEntryPoint;
+import org.springframework.web.server.WebFilter;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 
+@Slf4j
 @Configuration
 public class SecurityConfig {
 
@@ -41,11 +46,18 @@ public class SecurityConfig {
         http
                 // 1. 路由权限配置 (Lambda 写法)
                 .authorizeExchange(
-                        exchanges -> exchanges.pathMatchers("/api/public/**", "/favicon.ico", "/actuator/**")
+                        exchanges -> exchanges
+                                .pathMatchers("/api/public/**", "/favicon.ico", "/actuator/health",
+                                        "/login/**", "/error", "/oauth2/**")
                                 .permitAll().anyExchange().authenticated())
                 // 2. OAuth2 登录配置 (✅ 最新 Lambda DSL 写法)
                 // 使用 Customizer.withDefaults() 启用默认的 OAuth2 登录流程
                 .oauth2Login(oauth2 -> oauth2
+                        // 👇 处理登录失败
+                        .authenticationFailureHandler((webFilterExchange, exception) -> {
+                            log.error("【OAuth2 登录失败】原因: {}", exception.getMessage());
+                            return Mono.error(exception);
+                        })
                         // 👇 完全自定义的成功处理器
                         .authenticationSuccessHandler((webFilterExchange, authentication) -> {
                             OAuth2User oAuth2User = (OAuth2User) authentication.getPrincipal();
@@ -62,26 +74,21 @@ public class SecurityConfig {
                             }
 
                             // 2. 生成 JWT Token
-                            SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
-                            String token = Jwts.builder()
-                                    .setSubject(userId)
-                                    .claim("name", name)
-                                    .claim("picture", picture)
-                                    .setIssuedAt(new Date())
-                                    .setExpiration(new Date(System.currentTimeMillis() + 86400000 * 7)) // 7 天有效期
-                                    .signWith(key)
-                                    .compact();
+                            SecretKey key =
+                                    Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
+                            String token = Jwts.builder().setSubject(userId).claim("name", name)
+                                    .claim("picture", picture).setIssuedAt(new Date())
+                                    .setExpiration(
+                                            new Date(System.currentTimeMillis() + 86400000)) // 1 天 (24小时) 有效期
+                                    .signWith(key).compact();
 
                             var exchange = webFilterExchange.getExchange();
                             var response = exchange.getResponse();
 
                             // 3. 写入 HttpOnly Cookie
                             response.addCookie(ResponseCookie.from("jwt_token", token)
-                                    .httpOnly(true)
-                                    .path("/")
-                                    .domain(cookieDomain) // 设置二级域名共享
-                                    .maxAge(Duration.ofDays(7))
-                                    .build());
+                                    .httpOnly(true).path("/").domain(cookieDomain) // 设置二级域名共享
+                                    .maxAge(Duration.ofDays(1)).build());
 
                             return exchange.getSession().flatMap(session -> {
                                 // 1. 尝试从 Session 取出原页面地址，如果没有，就用默认地址兜底
@@ -92,8 +99,16 @@ public class SecurityConfig {
                                 session.getAttributes().remove("CUSTOM_REDIRECT_URI");
 
                                 // 3. 执行真正的 302 重定向，把用户送回原页面
+                                // 🔥【优化】同时把 token 带在 URL 上，方便前端获取并存入 localStorage
+                                String finalRedirectUri = redirectUri;
+                                if (finalRedirectUri.contains("?")) {
+                                    finalRedirectUri += "&token=" + token;
+                                } else {
+                                    finalRedirectUri += "?token=" + token;
+                                }
+
                                 response.setStatusCode(HttpStatus.FOUND);
-                                response.getHeaders().setLocation(URI.create(redirectUri));
+                                response.getHeaders().setLocation(URI.create(finalRedirectUri));
                                 return response.setComplete();
                             });
                         }))
@@ -108,6 +123,8 @@ public class SecurityConfig {
 
     private ServerAuthenticationEntryPoint serverAuthenticationEntryPoint() {
         return (exchange, e) -> {
+            log.warn("【未授权访问】Path: {}, Reason: {}", exchange.getRequest().getURI().getPath(),
+                    e.getMessage());
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
             exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
             String jsonResponse = String.format(
@@ -115,6 +132,20 @@ public class SecurityConfig {
             byte[] bytes = jsonResponse.getBytes(StandardCharsets.UTF_8);
             DataBuffer buffer = exchange.getResponse().bufferFactory().wrap(bytes);
             return exchange.getResponse().writeWith(Mono.just(buffer));
+        };
+    }
+
+    // 增加请求头日志打印，帮助排查 Nginx 转发参数
+    @Bean
+    @Order(Ordered.HIGHEST_PRECEDENCE)
+    public WebFilter logFilter() {
+        return (exchange, chain) -> {
+            var request = exchange.getRequest();
+            log.info("【网关接受请求】Path: {}, Host: {}, X-Forwarded-Port: {}, X-Forwarded-Proto: {}",
+                    request.getURI().getPath(), request.getHeaders().getFirst("Host"),
+                    request.getHeaders().getFirst("X-Forwarded-Port"),
+                    request.getHeaders().getFirst("X-Forwarded-Proto"));
+            return chain.filter(exchange);
         };
     }
 }
