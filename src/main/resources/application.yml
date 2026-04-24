@@ -6,6 +6,9 @@ management:
   endpoints:
     web:
       base-path: "/actuator" # 这样访问路径就会变成 /actuator/health
+      exposure:
+        include: 'env,health'
+
 spring:
   application:
     name: gateway
