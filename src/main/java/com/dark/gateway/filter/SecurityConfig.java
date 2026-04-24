@@ -79,8 +79,7 @@ public class SecurityConfig {
                             String token = Jwts.builder().setSubject(userId).claim("name", name)
                                     .claim("picture", picture).setIssuedAt(new Date())
                                     .setExpiration(
-                                            new Date(System.currentTimeMillis() + 86400000 * 7)) // 7
-                                                                                                 // 天有效期
+                                            new Date(System.currentTimeMillis() + 86400000)) // 1 天 (24小时) 有效期
                                     .signWith(key).compact();
 
                             var exchange = webFilterExchange.getExchange();
@@ -89,7 +88,7 @@ public class SecurityConfig {
                             // 3. 写入 HttpOnly Cookie
                             response.addCookie(ResponseCookie.from("jwt_token", token)
                                     .httpOnly(true).path("/").domain(cookieDomain) // 设置二级域名共享
-                                    .maxAge(Duration.ofDays(7)).build());
+                                    .maxAge(Duration.ofDays(1)).build());
 
                             return exchange.getSession().flatMap(session -> {
                                 // 1. 尝试从 Session 取出原页面地址，如果没有，就用默认地址兜底
