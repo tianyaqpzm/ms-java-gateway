@@ -47,7 +47,7 @@ public class SecurityConfig {
                 // 1. 路由权限配置 (Lambda 写法)
                 .authorizeExchange(
                         exchanges -> exchanges
-                                .pathMatchers("/api/public/**", "/favicon.ico", "/actuator/**",
+                                .pathMatchers("/api/public/**", "/favicon.ico", "/actuator/health",
                                         "/login/**", "/error", "/oauth2/**")
                                 .permitAll().anyExchange().authenticated())
                 // 2. OAuth2 登录配置 (✅ 最新 Lambda DSL 写法)
