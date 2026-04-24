@@ -10,8 +10,6 @@ management:
         include: 'env,health'
 
 spring:
-  application:
-    name: gateway
   cloud:
     nacos:
       discovery:
