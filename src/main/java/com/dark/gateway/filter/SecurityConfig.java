@@ -4,29 +4,25 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Date;
-import javax.annotation.PostConstruct;
 import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
-import org.springframework.security.oauth2.client.endpoint.OAuth2AuthorizationCodeGrantRequest;
-import org.springframework.security.oauth2.client.endpoint.ReactiveOAuth2AccessTokenResponseClient;
-import org.springframework.security.oauth2.client.endpoint.WebClientReactiveAuthorizationCodeTokenResponseClient;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.ServerAuthenticationEntryPoint;
-import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.server.WebFilter;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.Ordered;
-import org.springframework.core.annotation.Order;
-import org.springframework.web.server.WebFilter;
 import reactor.core.publisher.Mono;
 
 @Slf4j
@@ -61,16 +57,18 @@ public class SecurityConfig {
         http
                 // 1. 路由权限配置 (Lambda 写法)
                 .authorizeExchange(
-                        exchanges -> exchanges.pathMatchers("/api/public/**", "/favicon.ico", "/actuator/**", "/login/**", "/error", "/oauth2/**")
+                        exchanges -> exchanges
+                                .pathMatchers("/api/public/**", "/favicon.ico", "/actuator/**",
+                                        "/login/**", "/error", "/oauth2/**")
                                 .permitAll().anyExchange().authenticated())
                 // 2. OAuth2 登录配置 (✅ 最新 Lambda DSL 写法)
                 // 使用 Customizer.withDefaults() 启用默认的 OAuth2 登录流程
                 .oauth2Login(oauth2 -> oauth2
-                        // 👇 关键：增加 Token 请求客户端的日志打印
-                        .tokenResponseClient(customTokenResponseClient())
                         // 👇 处理登录失败
                         .authenticationFailureHandler((webFilterExchange, exception) -> {
                             log.error("【OAuth2 登录失败】原因: {}", exception.getMessage(), exception);
+                            log.error("【OAuth2 诊断】当前正在使用的 Casdoor Client Secret: {}",
+                                    casdoorClientSecret);
                             return Mono.error(exception);
                         })
                         // 👇 完全自定义的成功处理器
@@ -89,26 +87,22 @@ public class SecurityConfig {
                             }
 
                             // 2. 生成 JWT Token
-                            SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
-                            String token = Jwts.builder()
-                                    .setSubject(userId)
-                                    .claim("name", name)
-                                    .claim("picture", picture)
-                                    .setIssuedAt(new Date())
-                                    .setExpiration(new Date(System.currentTimeMillis() + 86400000 * 7)) // 7 天有效期
-                                    .signWith(key)
-                                    .compact();
+                            SecretKey key =
+                                    Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
+                            String token = Jwts.builder().setSubject(userId).claim("name", name)
+                                    .claim("picture", picture).setIssuedAt(new Date())
+                                    .setExpiration(
+                                            new Date(System.currentTimeMillis() + 86400000 * 7)) // 7
+                                                                                                 // 天有效期
+                                    .signWith(key).compact();
 
                             var exchange = webFilterExchange.getExchange();
                             var response = exchange.getResponse();
 
                             // 3. 写入 HttpOnly Cookie
                             response.addCookie(ResponseCookie.from("jwt_token", token)
-                                    .httpOnly(true)
-                                    .path("/")
-                                    .domain(cookieDomain) // 设置二级域名共享
-                                    .maxAge(Duration.ofDays(7))
-                                    .build());
+                                    .httpOnly(true).path("/").domain(cookieDomain) // 设置二级域名共享
+                                    .maxAge(Duration.ofDays(7)).build());
 
                             return exchange.getSession().flatMap(session -> {
                                 // 1. 尝试从 Session 取出原页面地址，如果没有，就用默认地址兜底
@@ -135,7 +129,8 @@ public class SecurityConfig {
 
     private ServerAuthenticationEntryPoint serverAuthenticationEntryPoint() {
         return (exchange, e) -> {
-            log.warn("【未授权访问】Path: {}, Reason: {}", exchange.getRequest().getURI().getPath(), e.getMessage());
+            log.warn("【未授权访问】Path: {}, Reason: {}", exchange.getRequest().getURI().getPath(),
+                    e.getMessage());
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
             exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
             String jsonResponse = String.format(
@@ -146,20 +141,6 @@ public class SecurityConfig {
         };
     }
 
-    private ReactiveOAuth2AccessTokenResponseClient<OAuth2AuthorizationCodeGrantRequest> customTokenResponseClient() {
-        WebClientReactiveAuthorizationCodeTokenResponseClient client = new WebClientReactiveAuthorizationCodeTokenResponseClient();
-        client.setWebClient(WebClient.builder()
-                .filter((request, next) -> {
-                    log.info("【Token 交换请求】URL: {}, Method: {}", request.url(), request.method());
-                    log.info("【Token 交换请求】Headers: {}", request.headers());
-                    // 打印正在使用的 Client Secret (从配置中读取的)
-                    log.info("【Token 交换请求】正在尝试使用 Client Secret: {}", casdoorClientSecret);
-                    return next.exchange(request);
-                })
-                .build());
-        return client;
-    }
-
     // 增加请求头日志打印，帮助排查 Nginx 转发参数
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -167,8 +148,7 @@ public class SecurityConfig {
         return (exchange, chain) -> {
             var request = exchange.getRequest();
             log.info("【网关接受请求】Path: {}, Host: {}, X-Forwarded-Port: {}, X-Forwarded-Proto: {}",
-                    request.getURI().getPath(),
-                    request.getHeaders().getFirst("Host"),
+                    request.getURI().getPath(), request.getHeaders().getFirst("Host"),
                     request.getHeaders().getFirst("X-Forwarded-Port"),
                     request.getHeaders().getFirst("X-Forwarded-Proto"));
             return chain.filter(exchange);
