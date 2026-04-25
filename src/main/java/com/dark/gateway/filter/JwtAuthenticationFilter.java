@@ -15,8 +15,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.util.PathMatcher;
 import org.springframework.web.server.ServerWebExchange;
-import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
@@ -77,21 +77,22 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         try {
             Claims claims = validateAndParseToken(token);
             log.debug("【JwtFilter】Token validated for user: {}", claims.getSubject());
-            
+
             // Extract standard fields, assuming Cardoor uses standard claims like sub, name, etc.
             String userId = claims.getSubject();
             String username = claims.get("name", String.class);
-            if (username == null) username = claims.get("username", String.class);
+            if (username == null)
+                username = claims.get("username", String.class);
             String avatar = claims.get("picture", String.class);
-            if (avatar == null) avatar = claims.get("avatar", String.class);
+            if (avatar == null)
+                avatar = claims.get("avatar", String.class);
 
             // Mutate the request, pass the downstream headers cleanly
-            ServerHttpRequest mutatedRequest = request.mutate()
-                    .header("X-User-Id", userId != null ? userId : "")
-                    .header("X-User-Name", username != null ? username : "")
-                    .header("X-User-Avatar", avatar != null ? avatar : "")
-                    .build();
-            
+            ServerHttpRequest mutatedRequest =
+                    request.mutate().header("X-User-Id", userId != null ? userId : "")
+                            .header("X-User-Name", username != null ? username : "")
+                            .header("X-User-Avatar", avatar != null ? avatar : "").build();
+
             exchange = exchange.mutate().request(mutatedRequest).build();
         } catch (Exception e) {
             log.error("【JwtFilter】Token validation failed for path {}: {}", url, e.getMessage());
