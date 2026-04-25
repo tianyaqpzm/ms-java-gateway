@@ -112,9 +112,23 @@ public class SecurityConfig {
                                 return response.setComplete();
                             });
                         }))
-                // 3. 禁用 CSRF (✅ 最新 Lambda DSL 写法)
+                // 3. 登出配置
+                .logout(logout -> logout
+                        .logoutUrl("/logout")
+                        .logoutSuccessHandler((webFilterExchange, authentication) -> {
+                            var exchange = webFilterExchange.getExchange();
+                            var response = exchange.getResponse();
+                            // 清除 Cookie
+                            response.addCookie(ResponseCookie.from("jwt_token", "")
+                                    .maxAge(0).path("/").domain(cookieDomain).build());
+                            // 重定向到登录页
+                            response.setStatusCode(HttpStatus.FOUND);
+                            response.getHeaders().setLocation(URI.create(loginUrl));
+                            return response.setComplete();
+                        }))
+                // 4. 禁用 CSRF (✅ 最新 Lambda DSL 写法)
                 .csrf(csrf -> csrf.disable())
-                // 4. 自定义未授权处理，返回 401 携带登录跳转链接
+                // 5. 自定义未授权处理，返回 401 携带登录跳转链接
                 .exceptionHandling(exceptionHandling -> exceptionHandling
                         .authenticationEntryPoint(serverAuthenticationEntryPoint()));
 

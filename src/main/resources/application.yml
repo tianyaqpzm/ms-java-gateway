@@ -47,13 +47,13 @@ spring:
           filters:
             - StripPrefix=0
         
-        # LLM Proxy Route: Forward /v1/chat/** to OpenAI/DeepSeek
-        - id: llm-proxy-route
-          uri: https://api.openai.com
-          predicates:
-            - Path=/v1/chat/**
-          filters:
-            - name: AiBillingFilter
+        # LLM Proxy Route: Forward /v1/chat/** to OpenAI/DeepSeek (暂未启用)
+        # - id: llm-proxy-route
+        #   uri: https://api.openai.com
+        #   predicates:
+        #     - Path=/v1/chat/**
+        #   filters:
+        #     - name: AiBillingFilter
 
         # # Gemini Proxy Route
         # - id: gemini-route
