@@ -1,17 +1,14 @@
 package com.dark.gateway;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.Ordered;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.web.server.WebFilter;
-
 import com.dark.gateway.filter.IgnoreWhiteProperties;
 import com.dark.gateway.filter.JwtAuthenticationFilter;
 import com.dark.gateway.filter.RedirectSaveFilter;
@@ -35,12 +32,12 @@ class ArchitectureGuardTest {
         assertThat(config).isNotNull();
     }
 
-    // GA-02: JwtAuthenticationFilter 注册为 GlobalFilter 且 order = -100
+    // GA-02: JwtAuthenticationFilter 注册为 WebFilter 且 order = -100
     @Test
-    @DisplayName("GA-02: JwtAuthenticationFilter 是 GlobalFilter 且 order=-100")
-    void jwtFilterShouldBeGlobalFilterWithCorrectOrder() {
+    @DisplayName("GA-02: JwtAuthenticationFilter 是 WebFilter 且 order=-100")
+    void jwtFilterShouldBeWebFilterWithCorrectOrder() {
         JwtAuthenticationFilter filter = ctx.getBean(JwtAuthenticationFilter.class);
-        assertThat(filter).isInstanceOf(GlobalFilter.class);
+        assertThat(filter).isInstanceOf(WebFilter.class);
         assertThat(filter).isInstanceOf(Ordered.class);
         assertThat(filter.getOrder()).isEqualTo(-100);
     }
@@ -58,9 +55,8 @@ class ArchitectureGuardTest {
     @DisplayName("GA-04: IgnoreWhiteProperties 正确绑定白名单 URL 列表")
     void ignoreWhitePropertiesShouldBindUrls() {
         IgnoreWhiteProperties props = ctx.getBean(IgnoreWhiteProperties.class);
-        assertThat(props.getUrls())
-                .isNotEmpty()
-                .contains("/actuator/health", "/oauth2/**", "/logout");
+        assertThat(props.getUrls()).isNotEmpty().contains("/actuator/health", "/oauth2/**",
+                "/logout");
     }
 
     // GA-05: classpath 不包含 DispatcherServlet (架构约束: 严格非阻塞)
@@ -74,8 +70,6 @@ class ArchitectureGuardTest {
         } catch (ClassNotFoundException e) {
             hasServlet = false;
         }
-        assertThat(hasServlet)
-                .as("Gateway 是 WebFlux 架构，不应引入 Servlet 栈")
-                .isFalse();
+        assertThat(hasServlet).as("Gateway 是 WebFlux 架构，不应引入 Servlet 栈").isFalse();
     }
 }

@@ -1,37 +1,14 @@
 spring:
   security:
     login-url: /oauth2/authorization/casdoor
-    ignore:
-      urls:
-        - /api/public/**
-        - /favicon.ico
-        - /actuator/health
-        - /login/**
-        - /error
-        - /oauth2/**
-        - /logout
-    oauth2:
-      client:
-        registration:
-          casdoor:
-            client-id: test-id
-            client-secret: test-secret
-            authorization-grant-type: authorization_code
-            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
-            scope: openid,profile,email
-        provider:
-          casdoor:
-            authorization-uri: http://localhost:8000/login/oauth2/authorize
-            token-uri: http://localhost:8000/api/login/oauth2/access_token
-            user-info-uri: http://localhost:8000/api/userinfo
-            jwk-set-uri: http://localhost:8000/.well-known/jwksks.json
-            user-name-attribute: preferred_username
   cloud:
     nacos:
       discovery:
         enabled: false
+        server-addr: localhost:8848
       config:
         enabled: false
+        server-addr: localhost:8848
         import-check:
           enabled: false
     gateway:
@@ -45,6 +22,16 @@ spring:
             - Path=/api/test/**
 
 app:
+  security:
+    ignore:
+      urls:
+        - /api/public/**
+        - /favicon.ico
+        - /actuator/health
+        - /login/**
+        - /error
+        - /oauth2/**
+        - /logout
   frontend-url: https://test.example.com
   cookie-domain: example.com
   jwt:

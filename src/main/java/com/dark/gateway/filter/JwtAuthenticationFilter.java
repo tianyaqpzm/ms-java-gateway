@@ -4,8 +4,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.Ordered;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
@@ -19,26 +22,32 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.Ordered;
 import reactor.core.publisher.Mono;
 
 @Slf4j
 @Component
 public class JwtAuthenticationFilter implements WebFilter, Ordered {
 
+    private static final String ALREADY_FILTERED =
+            JwtAuthenticationFilter.class.getName() + ".FILTERED";
     private final PathMatcher pathMatcher = new AntPathMatcher();
 
-    @org.springframework.beans.factory.annotation.Value("${app.jwt.secret}")
+    @Value("${app.jwt.secret:default-secret-placeholder-must-be-long-enough}")
     private String jwtSecret;
 
     @Autowired
     private IgnoreWhiteProperties ignoreWhiteProperties;
 
-    @org.springframework.beans.factory.annotation.Value("${spring.security.login-url}")
+    @Value("${spring.security.login-url:/login}")
     private String loginUrl;
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
+        if (exchange.getAttribute(ALREADY_FILTERED) != null) {
+            return chain.filter(exchange);
+        }
+        exchange.getAttributes().put(ALREADY_FILTERED, true);
+
         ServerHttpRequest request = exchange.getRequest();
         String url = request.getURI().getPath();
 
@@ -49,6 +58,7 @@ public class JwtAuthenticationFilter implements WebFilter, Ordered {
 
         // 1. 检查白名单
         if (isWhiteList(url)) {
+            log.debug("【JwtFilter】Whitelist pass: {}", url);
             return chain.filter(exchange);
         }
 
@@ -56,38 +66,38 @@ public class JwtAuthenticationFilter implements WebFilter, Ordered {
 
         // 2. 如果没拿到 Token，交由后面的 Security 拦截器处理 (会触发 401/重定向)
         if (token == null) {
+            log.debug("【JwtFilter】No token found for: {}", url);
             return chain.filter(exchange);
         }
 
         try {
             Claims claims = validateAndParseToken(token);
             String userId = claims.getSubject();
-            
+
             log.debug("【JwtFilter】Token validated for user: {}", userId);
 
             // 3. 构建 Authentication 对象并注入 SecurityContext
-            UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-                    userId, null, Collections.emptyList());
+            UsernamePasswordAuthenticationToken auth =
+                    new UsernamePasswordAuthenticationToken(userId, null, Collections.emptyList());
 
-            // 透明透传用户信息给下游微服务 (通过 Mutate Request)
+            // 透明透传用户信息给下游微服务
             String username = claims.get("name", String.class);
-            if (username == null) username = claims.get("username", String.class);
+            if (username == null)
+                username = claims.get("username", String.class);
             String avatar = claims.get("picture", String.class);
-            if (avatar == null) avatar = claims.get("avatar", String.class);
+            if (avatar == null)
+                avatar = claims.get("avatar", String.class);
 
-            ServerHttpRequest mutatedRequest = request.mutate()
-                    .header("X-User-Id", userId != null ? userId : "")
-                    .header("X-User-Name", username != null ? username : "")
-                    .header("X-User-Avatar", avatar != null ? avatar : "")
-                    .build();
+            ServerHttpRequest mutatedRequest =
+                    request.mutate().header("X-User-Id", userId != null ? userId : "")
+                            .header("X-User-Name", username != null ? username : "")
+                            .header("X-User-Avatar", avatar != null ? avatar : "").build();
 
-            // 将认证信息存入 ReactiveSecurityContextHolder，并继续过滤链
             return chain.filter(exchange.mutate().request(mutatedRequest).build())
                     .contextWrite(ReactiveSecurityContextHolder.withAuthentication(auth));
 
         } catch (Exception e) {
-            log.error("【JwtFilter】Token validation failed: {}", e.getMessage());
-            // Token 校验失败，直接返回 401
+            log.error("【JwtFilter】Token validation failed for {}: {}", url, e.getMessage());
             return onError(exchange, "Invalid Token", HttpStatus.UNAUTHORIZED);
         }
     }
@@ -95,7 +105,8 @@ public class JwtAuthenticationFilter implements WebFilter, Ordered {
     private String extractToken(ServerHttpRequest request) {
         // 1. 优先从 HttpOnly Cookie 获取
         org.springframework.http.HttpCookie cookie = request.getCookies().getFirst("jwt_token");
-        if (cookie != null) return cookie.getValue();
+        if (cookie != null)
+            return cookie.getValue();
 
         // 2. 兜底从 Authorization Header 获取
         String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
@@ -106,27 +117,32 @@ public class JwtAuthenticationFilter implements WebFilter, Ordered {
     }
 
     private Claims validateAndParseToken(String token) {
-        SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
+        byte[] secretBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
+        SecretKey key = Keys.hmacShaKeyFor(secretBytes);
         return Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token).getBody();
     }
 
     private Mono<Void> onError(ServerWebExchange exchange, String err, HttpStatus httpStatus) {
         exchange.getResponse().setStatusCode(httpStatus);
-        exchange.getResponse().getHeaders().add("Content-Type", "application/json");
-        String jsonResponse = String.format("{\"url\": \"%s\", \"message\": \"%s\"}", loginUrl, err);
-        return exchange.getResponse().writeWith(Mono.just(
-                exchange.getResponse().bufferFactory().wrap(jsonResponse.getBytes(StandardCharsets.UTF_8))));
+        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
+        String jsonResponse = String.format("{\"url\": \"%s\", \"message\": \"%s\"}",
+                loginUrl, err);
+        return exchange.getResponse().writeWith(Mono.just(exchange.getResponse().bufferFactory()
+                .wrap(jsonResponse.getBytes(StandardCharsets.UTF_8))));
     }
 
     private boolean isWhiteList(String url) {
+        if (ignoreWhiteProperties == null || ignoreWhiteProperties.getUrls() == null)
+            return false;
         for (String pattern : ignoreWhiteProperties.getUrls()) {
-            if (pathMatcher.match(pattern, url)) return true;
+            if (pathMatcher.match(pattern, url))
+                return true;
         }
         return false;
     }
 
     @Override
     public int getOrder() {
-        return -100; // High priority
+        return -100;
     }
 }
