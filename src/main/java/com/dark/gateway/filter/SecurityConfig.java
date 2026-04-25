@@ -11,9 +11,11 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
+import org.springframework.security.config.web.server.SecurityWebFiltersOrder;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.server.SecurityWebFilterChain;
@@ -24,6 +26,7 @@ import org.springframework.web.server.session.WebSessionIdResolver;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import reactor.core.publisher.Mono;
 
 @Slf4j
@@ -61,17 +64,25 @@ public class SecurityConfig {
         this.ignoreWhiteProperties = ignoreWhiteProperties;
     }
 
+    @Autowired
+    private JwtAuthenticationFilter jwtAuthenticationFilter;
+
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
         String[] ignoreUrls = ignoreWhiteProperties.getUrls().toArray(new String[0]);
         log.info("【SecurityConfig】Loaded ignore URLs from properties: {}", (Object) ignoreUrls);
 
         http
-                // 1. 路由权限配置 (Lambda 写法)
+                // 0. 跨域配置
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                // 1. 注册自定义 JWT 过滤器 (在认证之前运行)
+                .addFilterAt(jwtAuthenticationFilter, SecurityWebFiltersOrder.AUTHENTICATION)
+                // 2. 路由权限配置 (Lambda 写法)
                 .authorizeExchange(
                         exchanges -> exchanges
+                                .pathMatchers(HttpMethod.OPTIONS).permitAll() // 显式允许所有 OPTIONS
                                 .pathMatchers(ignoreUrls).permitAll()
-                                .anyExchange().authenticated())
+                                .anyExchange().authenticated()) // 核心纠正：恢复为 authenticated，由自定义过滤器填充身份
                 // 2. OAuth2 登录配置 (✅ 最新 Lambda DSL 写法)
                 // 使用 Customizer.withDefaults() 启用默认的 OAuth2 登录流程
                 .oauth2Login(oauth2 -> oauth2
@@ -159,6 +170,20 @@ public class SecurityConfig {
                         .authenticationEntryPoint(serverAuthenticationEntryPoint()));
 
         return http.build();
+    }
+
+    @Bean
+    public org.springframework.web.cors.reactive.CorsConfigurationSource corsConfigurationSource() {
+        org.springframework.web.cors.CorsConfiguration config = new org.springframework.web.cors.CorsConfiguration();
+        config.setAllowCredentials(true);
+        config.addAllowedOrigin(defaultFrontendUrl);
+        config.addAllowedHeader("*");
+        config.addAllowedMethod("*");
+        config.setMaxAge(3600L);
+
+        org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource source = new org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
     }
 
     private ServerAuthenticationEntryPoint serverAuthenticationEntryPoint() {

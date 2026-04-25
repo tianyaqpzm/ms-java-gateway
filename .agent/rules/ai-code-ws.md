@@ -34,5 +34,10 @@ trigger: always_on
    - 必须透明地处理 SSE (Server-Sent Events) 流。
    - **不要**缓冲响应内容，要支持从 Python 服务到前端的流式透传 (Streaming Pass-through)。
 
+5. **安全与认证 (Security)**:
+   - **基于 Security 链的认证**: JWT 校验逻辑 **必须** 实现为 `WebFilter` (而非 `GlobalFilter`)，并注入到 `SecurityWebFilterChain` 中（建议使用 `addFilterAt` 插入 `AUTHENTICATION` 阶段）。
+   - **身份注入**: 必须将解析后的 `Authentication` 对象注入 `ReactiveSecurityContextHolder`，以便配置 `.anyExchange().authenticated()` 进行保护。
+   - **CORS 预检**: 必须配置 `CorsConfigurationSource` 并放行 `OPTIONS` 请求，确保跨域 preflight 顺利通过。
+
 # Key Context (关键背景)
 该网关位于前端与后端服务之间。它是 Python AI Agent (SSE流) 和 Java 业务后端的统一入口，必须能高效处理高并发的长连接。
