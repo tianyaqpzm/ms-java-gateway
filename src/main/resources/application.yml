@@ -68,6 +68,12 @@ spring:
     ignore:
       urls:
         - /api/public/**
+        - /favicon.ico
+        - /actuator/health
+        - /login/**
+        - /error
+        - /oauth2/**
+        - /logout
     oauth2:
       client:
         registration:

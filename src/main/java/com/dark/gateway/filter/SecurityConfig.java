@@ -55,14 +55,16 @@ public class SecurityConfig {
         return resolver;
     }
 
+    @Value("${spring.security.ignore.urls}")
+    private String[] ignoreUrls;
+
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
         http
                 // 1. 路由权限配置 (Lambda 写法)
                 .authorizeExchange(
                         exchanges -> exchanges
-                                .pathMatchers("/api/public/**", "/favicon.ico", "/actuator/health",
-                                        "/login/**", "/error", "/oauth2/**")
+                                .pathMatchers(ignoreUrls)
                                 .permitAll().anyExchange().authenticated())
                 // 2. OAuth2 登录配置 (✅ 最新 Lambda DSL 写法)
                 // 使用 Customizer.withDefaults() 启用默认的 OAuth2 登录流程

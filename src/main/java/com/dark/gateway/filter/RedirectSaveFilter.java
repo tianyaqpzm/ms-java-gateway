@@ -24,6 +24,11 @@ public class RedirectSaveFilter implements WebFilter {
             String redirectParam = exchange.getRequest().getQueryParams().getFirst("redirect");
 
             if (redirectParam != null) {
+                // 如果目标地址包含 logout，则忽略，不存入 Session，防止登入后立刻又登出
+                if (redirectParam.contains("/logout")) {
+                    return chain.filter(exchange);
+                }
+
                 // 把原页面地址存入 Session，供登录成功后使用
                 return exchange.getSession().flatMap(session -> {
                     String maskedUri = maskUri(redirectParam);
