@@ -103,7 +103,11 @@ public class SecurityConfig {
 
                             // 3. 写入 HttpOnly Cookie
                             response.addCookie(ResponseCookie.from("jwt_token", token)
-                                    .httpOnly(true).path("/").domain(cookieDomain) // 设置二级域名共享
+                                    .httpOnly(true)
+                                    .secure(true) // 🔥 必须开启 Secure，否则 HTTPS 浏览器可能拒绝发送
+                                    .sameSite("Lax") // 🔥 设置 SameSite，解决跨域/重定向丢失问题
+                                    .path("/")
+                                    .domain(cookieDomain) // 设置二级域名共享
                                     .maxAge(Duration.ofDays(1)).build());
 
                             return exchange.getSession().flatMap(session -> {

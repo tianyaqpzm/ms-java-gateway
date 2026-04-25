@@ -47,6 +47,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         String url = exchange.getRequest().getURI().getPath();
         // 2. 🔥【关键修复】检查白名单：如果匹配，直接放行，不做 Token 校验
         if (isWhiteList(url)) {
+            log.trace("【JwtFilter】Whitelist match: {}", url);
             return chain.filter(exchange);
         }
 
@@ -56,22 +57,26 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         org.springframework.http.HttpCookie cookie = request.getCookies().getFirst("jwt_token");
         if (cookie != null) {
             token = cookie.getValue();
+            log.trace("【JwtFilter】Found token in cookie");
         }
         // 2. 兜底策略：从 Authorization Header 中获取 (给 Python Agent 或 API 调用使用)
         else {
             String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                 token = authHeader.substring(7);
+                log.trace("【JwtFilter】Found token in headers");
             }
         }
 
         // 3. 如果什么都没拿到，返回 401 触发重定向重新登录
         if (token == null) {
+            log.warn("【JwtFilter】Missing Token for path: {}", url);
             return onError(exchange, "Missing Authorization Cookie or Header",
                     HttpStatus.UNAUTHORIZED);
         }
         try {
             Claims claims = validateAndParseToken(token);
+            log.debug("【JwtFilter】Token validated for user: {}", claims.getSubject());
             
             // Extract standard fields, assuming Cardoor uses standard claims like sub, name, etc.
             String userId = claims.getSubject();
@@ -89,7 +94,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             
             exchange = exchange.mutate().request(mutatedRequest).build();
         } catch (Exception e) {
-            log.error("Token validation failed: {}", e.getMessage());
+            log.error("【JwtFilter】Token validation failed for path {}: {}", url, e.getMessage());
             return onError(exchange, "Invalid Token", HttpStatus.UNAUTHORIZED);
         }
 
@@ -102,6 +107,7 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
     }
 
     private Mono<Void> onError(ServerWebExchange exchange, String err, HttpStatus httpStatus) {
+        log.info("【JwtFilter】Returning {} error: {}", httpStatus, err);
         ServerHttpResponse response = exchange.getResponse();
         response.setStatusCode(httpStatus);
 
