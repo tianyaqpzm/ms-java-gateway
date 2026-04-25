@@ -1,0 +1,56 @@
+spring:
+  security:
+    login-url: /oauth2/authorization/casdoor
+    ignore:
+      urls:
+        - /api/public/**
+        - /favicon.ico
+        - /actuator/health
+        - /login/**
+        - /error
+        - /oauth2/**
+        - /logout
+    oauth2:
+      client:
+        registration:
+          casdoor:
+            client-id: test-id
+            client-secret: test-secret
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            scope: openid,profile,email
+        provider:
+          casdoor:
+            authorization-uri: http://localhost:8000/login/oauth2/authorize
+            token-uri: http://localhost:8000/api/login/oauth2/access_token
+            user-info-uri: http://localhost:8000/api/userinfo
+            jwk-set-uri: http://localhost:8000/.well-known/jwksks.json
+            user-name-attribute: preferred_username
+  cloud:
+    nacos:
+      discovery:
+        enabled: false
+      config:
+        enabled: false
+        import-check:
+          enabled: false
+    gateway:
+      discovery:
+        locator:
+          enabled: false
+      routes:
+        - id: test_route
+          uri: http://localhost:8080
+          predicates:
+            - Path=/api/test/**
+
+app:
+  frontend-url: https://test.example.com
+  cookie-domain: example.com
+  jwt:
+    secret: test-secret-key-must-be-at-least-256-bits-long!!
+
+logging:
+  level:
+    root: WARN
+    com.dark.gateway: DEBUG

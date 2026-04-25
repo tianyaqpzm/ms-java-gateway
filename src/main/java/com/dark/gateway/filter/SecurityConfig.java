@@ -64,12 +64,14 @@ public class SecurityConfig {
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
         String[] ignoreUrls = ignoreWhiteProperties.getUrls().toArray(new String[0]);
+        log.info("【SecurityConfig】Loaded ignore URLs from properties: {}", (Object) ignoreUrls);
+
         http
                 // 1. 路由权限配置 (Lambda 写法)
                 .authorizeExchange(
                         exchanges -> exchanges
-                                .pathMatchers(ignoreUrls)
-                                .permitAll().anyExchange().authenticated())
+                                .pathMatchers(ignoreUrls).permitAll()
+                                .anyExchange().authenticated())
                 // 2. OAuth2 登录配置 (✅ 最新 Lambda DSL 写法)
                 // 使用 Customizer.withDefaults() 启用默认的 OAuth2 登录流程
                 .oauth2Login(oauth2 -> oauth2
