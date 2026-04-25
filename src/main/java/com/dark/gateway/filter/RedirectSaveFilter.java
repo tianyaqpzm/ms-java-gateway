@@ -26,13 +26,21 @@ public class RedirectSaveFilter implements WebFilter {
             if (redirectParam != null) {
                 // 把原页面地址存入 Session，供登录成功后使用
                 return exchange.getSession().flatMap(session -> {
+                    String maskedUri = maskUri(redirectParam);
                     log.info("【RedirectSaveFilter】Saving CUSTOM_REDIRECT_URI={} in Session ID={}",
-                            redirectParam, session.getId());
+                            maskedUri, session.getId());
                     session.getAttributes().put("CUSTOM_REDIRECT_URI", redirectParam);
                     return session.save().thenReturn(session); // 明确触发保存
                 }).then(chain.filter(exchange));
             }
         }
         return chain.filter(exchange);
+    }
+
+    private String maskUri(String uri) {
+        if (uri == null || !uri.contains("?")) {
+            return uri;
+        }
+        return uri.split("\\?")[0] + "?******";
     }
 }

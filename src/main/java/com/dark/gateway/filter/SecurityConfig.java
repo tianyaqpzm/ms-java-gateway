@@ -19,6 +19,8 @@ import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.ServerAuthenticationEntryPoint;
 import org.springframework.web.server.WebFilter;
+import org.springframework.web.server.session.CookieWebSessionIdResolver;
+import org.springframework.web.server.session.WebSessionIdResolver;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +42,18 @@ public class SecurityConfig {
 
     @Value("${app.cookie-domain}")
     private String cookieDomain;
+
+    @Bean
+    public WebSessionIdResolver webSessionIdResolver() {
+        CookieWebSessionIdResolver resolver = new CookieWebSessionIdResolver();
+        resolver.setCookieName("DARK_SESSION"); // 统一修改为 DARK_SESSION
+        resolver.addCookieInitializer(builder -> builder
+                .domain(cookieDomain)
+                .path("/")
+                .sameSite("Lax") // 解决跨站重定向 Cookie 丢失问题
+                .httpOnly(true));
+        return resolver;
+    }
 
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
