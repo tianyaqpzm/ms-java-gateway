@@ -55,11 +55,15 @@ public class SecurityConfig {
         return resolver;
     }
 
-    @Value("${spring.security.ignore.urls}")
-    private String[] ignoreUrls;
+    private final IgnoreWhiteProperties ignoreWhiteProperties;
+
+    public SecurityConfig(IgnoreWhiteProperties ignoreWhiteProperties) {
+        this.ignoreWhiteProperties = ignoreWhiteProperties;
+    }
 
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
+        String[] ignoreUrls = ignoreWhiteProperties.getUrls().toArray(new String[0]);
         http
                 // 1. 路由权限配置 (Lambda 写法)
                 .authorizeExchange(
