@@ -2,123 +2,131 @@ package com.dark.gateway.filter;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.Date;
 import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.Ordered;
-import org.springframework.core.annotation.Order;
 import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
+import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
+import org.springframework.security.config.web.server.SecurityWebFiltersOrder;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
-import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.ServerAuthenticationEntryPoint;
-import org.springframework.web.server.WebFilter;
+import org.springframework.security.web.server.authentication.ServerAuthenticationSuccessHandler;
+import org.springframework.security.web.server.authentication.logout.RedirectServerLogoutSuccessHandler;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.reactive.CorsConfigurationSource;
+import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 
-@Slf4j
 @Configuration
+@EnableWebFluxSecurity
+@Slf4j
 public class SecurityConfig {
+
+    @Value("${app.frontend-url:https://122577.xyz}")
+    private String frontendUrl;
 
     @Value("${spring.security.login-url}")
     private String loginUrl;
 
-    // 默认兜底地址（如果用户是直接敲网关地址登录的，没有传 redirect 参数，就跳这里）
-    @Value("${app.frontend-url}")
-    private String defaultFrontendUrl;
-
     @Value("${app.jwt.secret}")
     private String jwtSecret;
 
-    @Value("${app.cookie-domain}")
+    @Value("${app.cookie-domain:122577.xyz}")
     private String cookieDomain;
+
+    private final IgnoreWhiteProperties ignoreWhiteProperties;
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    public SecurityConfig(IgnoreWhiteProperties ignoreWhiteProperties,
+            JwtAuthenticationFilter jwtAuthenticationFilter) {
+        this.ignoreWhiteProperties = ignoreWhiteProperties;
+        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+    }
 
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
-        http
-                // 1. 路由权限配置 (Lambda 写法)
-                .authorizeExchange(
-                        exchanges -> exchanges
-                                .pathMatchers("/api/public/**", "/favicon.ico", "/actuator/health",
-                                        "/login/**", "/error", "/oauth2/**")
-                                .permitAll().anyExchange().authenticated())
-                // 2. OAuth2 登录配置 (✅ 最新 Lambda DSL 写法)
-                // 使用 Customizer.withDefaults() 启用默认的 OAuth2 登录流程
+        String[] ignoreUrls = ignoreWhiteProperties.getUrls().toArray(new String[0]);
+
+        return http.csrf(csrf -> csrf.disable())
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .addFilterAt(jwtAuthenticationFilter, SecurityWebFiltersOrder.AUTHENTICATION)
+                .authorizeExchange(exchanges -> exchanges.pathMatchers(HttpMethod.OPTIONS)
+                        .permitAll().pathMatchers(ignoreUrls).permitAll()
+                        .pathMatchers("/api/public/**", "/favicon.ico", "/actuator/**").permitAll()
+                        .anyExchange().authenticated())
                 .oauth2Login(oauth2 -> oauth2
-                        // 👇 处理登录失败
                         .authenticationFailureHandler((webFilterExchange, exception) -> {
                             log.error("【OAuth2 登录失败】原因: {}", exception.getMessage());
                             return Mono.error(exception);
                         })
-                        // 👇 完全自定义的成功处理器
-                        .authenticationSuccessHandler((webFilterExchange, authentication) -> {
-                            OAuth2User oAuth2User = (OAuth2User) authentication.getPrincipal();
-
-                            // 1. 提取用户信息 (兼容 Casdoor 不同的 Claim 名称)
-                            String userId = oAuth2User.getName();
-                            String name = oAuth2User.getAttribute("name");
-                            if (name == null) {
-                                name = oAuth2User.getAttribute("preferred_username");
-                            }
-                            String picture = oAuth2User.getAttribute("picture");
-                            if (picture == null) {
-                                picture = oAuth2User.getAttribute("avatar");
-                            }
-
-                            // 2. 生成 JWT Token
-                            SecretKey key =
-                                    Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
-                            String token = Jwts.builder().setSubject(userId).claim("name", name)
-                                    .claim("picture", picture).setIssuedAt(new Date())
-                                    .setExpiration(
-                                            new Date(System.currentTimeMillis() + 86400000)) // 1 天 (24小时) 有效期
-                                    .signWith(key).compact();
-
-                            var exchange = webFilterExchange.getExchange();
-                            var response = exchange.getResponse();
-
-                            // 3. 写入 HttpOnly Cookie
-                            response.addCookie(ResponseCookie.from("jwt_token", token)
-                                    .httpOnly(true).path("/").domain(cookieDomain) // 设置二级域名共享
-                                    .maxAge(Duration.ofDays(1)).build());
-
-                            return exchange.getSession().flatMap(session -> {
-                                // 1. 尝试从 Session 取出原页面地址，如果没有，就用默认地址兜底
-                                String redirectUri = session.getAttributeOrDefault(
-                                        "CUSTOM_REDIRECT_URI", defaultFrontendUrl);
-
-                                // 2. 用完即焚，清理 Session，保持干净
-                                session.getAttributes().remove("CUSTOM_REDIRECT_URI");
-
-                                // 3. 执行真正的 302 重定向，把用户送回原页面
-                                // 🔥【优化】同时把 token 带在 URL 上，方便前端获取并存入 localStorage
-                                String finalRedirectUri = redirectUri;
-                                if (finalRedirectUri.contains("?")) {
-                                    finalRedirectUri += "&token=" + token;
-                                } else {
-                                    finalRedirectUri += "?token=" + token;
-                                }
-
-                                response.setStatusCode(HttpStatus.FOUND);
-                                response.getHeaders().setLocation(URI.create(finalRedirectUri));
-                                return response.setComplete();
-                            });
-                        }))
-                // 3. 禁用 CSRF (✅ 最新 Lambda DSL 写法)
-                .csrf(csrf -> csrf.disable())
-                // 4. 自定义未授权处理，返回 401 携带登录跳转链接
+                        .authenticationSuccessHandler(authenticationSuccessHandler()))
                 .exceptionHandling(exceptionHandling -> exceptionHandling
-                        .authenticationEntryPoint(serverAuthenticationEntryPoint()));
+                        .authenticationEntryPoint(serverAuthenticationEntryPoint()))
+                .logout(logout -> logout.logoutUrl("/logout")
+                        .logoutSuccessHandler(new RedirectServerLogoutSuccessHandler()))
+                .build();
+    }
 
-        return http.build();
+    /**
+     * 登录成功处理器：提取用户信息，生成 JWT 并存入 Cookie
+     */
+    private ServerAuthenticationSuccessHandler authenticationSuccessHandler() {
+        return (webFilterExchange, authentication) -> {
+            log.info("【登录成功】生成 JWT Token 并写入 Cookie...{}", cookieDomain);
+
+            OidcUser oidcUser = (OidcUser) authentication.getPrincipal();
+            String userId = oidcUser.getSubject();
+            String name = oidcUser.getName();
+            String picture = oidcUser.getPicture();
+
+            // 1. 生成 JWT
+            SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
+            String token = Jwts.builder().setSubject(userId).claim("name", name)
+                    .claim("picture", picture != null ? picture : "").setIssuedAt(new Date())
+                    .setExpiration(new Date(System.currentTimeMillis() + 86400000)) // 24小时过期
+                    .signWith(key).compact();
+
+            // 2. 写入 HttpOnly Cookie
+            ResponseCookie jwtCookie = ResponseCookie.from("jwt_token", token).path("/")
+                    .domain(cookieDomain).httpOnly(true).secure(true) // 生产环境必须开启
+                    .sameSite("Lax").maxAge(86400).build();
+
+
+            webFilterExchange.getExchange().getResponse().addCookie(jwtCookie);
+
+            // 3. 处理重定向地址
+            return webFilterExchange.getExchange().getSession().flatMap(session -> {
+                String redirectUri = session.getAttribute("CUSTOM_REDIRECT_URI");
+                if (redirectUri == null) {
+                    redirectUri = frontendUrl;
+                }
+                log.info("【重定向】Redirecting to: {}", redirectUri);
+                
+                // 同时把 token 带在 URL 上，方便前端获取并存入 localStorage (作为双保险)
+                String finalRedirectUri = redirectUri;
+                if (finalRedirectUri.contains("?")) {
+                    finalRedirectUri += "&token=" + token;
+                } else {
+                    finalRedirectUri += "?token=" + token;
+                }
+                
+                webFilterExchange.getExchange().getResponse().setStatusCode(HttpStatus.FOUND);
+                webFilterExchange.getExchange().getResponse().getHeaders()
+                        .setLocation(URI.create(finalRedirectUri));
+                return Mono.empty();
+            });
+        };
     }
 
     private ServerAuthenticationEntryPoint serverAuthenticationEntryPoint() {
@@ -135,16 +143,29 @@ public class SecurityConfig {
         };
     }
 
-    // 增加请求头日志打印，帮助排查 Nginx 转发参数
     @Bean
-    @Order(Ordered.HIGHEST_PRECEDENCE)
-    public WebFilter logFilter() {
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowCredentials(true);
+        config.addAllowedOriginPattern("*");
+        config.addAllowedHeader("*");
+        config.addAllowedMethod("*");
+        config.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
+    }
+
+    /**
+     * 日志过滤器：记录所有进入网关的请求路径
+     */
+    @Bean
+    @org.springframework.core.annotation.Order(-200) // 运行在所有过滤器之前
+    public org.springframework.web.server.WebFilter logFilter() {
         return (exchange, chain) -> {
-            var request = exchange.getRequest();
-            log.info("【网关接受请求】Path: {}, Host: {}, X-Forwarded-Port: {}, X-Forwarded-Proto: {}",
-                    request.getURI().getPath(), request.getHeaders().getFirst("Host"),
-                    request.getHeaders().getFirst("X-Forwarded-Port"),
-                    request.getHeaders().getFirst("X-Forwarded-Proto"));
+            log.info("【网关请求】{} {}", exchange.getRequest().getMethod(),
+                    exchange.getRequest().getURI().getPath());
             return chain.filter(exchange);
         };
     }

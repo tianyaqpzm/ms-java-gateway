@@ -24,15 +24,28 @@ public class RedirectSaveFilter implements WebFilter {
             String redirectParam = exchange.getRequest().getQueryParams().getFirst("redirect");
 
             if (redirectParam != null) {
+                // 如果目标地址包含 logout，则忽略，不存入 Session，防止登入后立刻又登出
+                if (redirectParam.contains("/logout")) {
+                    return chain.filter(exchange);
+                }
+
                 // 把原页面地址存入 Session，供登录成功后使用
                 return exchange.getSession().flatMap(session -> {
+                    String maskedUri = maskUri(redirectParam);
                     log.info("【RedirectSaveFilter】Saving CUSTOM_REDIRECT_URI={} in Session ID={}",
-                            redirectParam, session.getId());
+                            maskedUri, session.getId());
                     session.getAttributes().put("CUSTOM_REDIRECT_URI", redirectParam);
                     return session.save().thenReturn(session); // 明确触发保存
                 }).then(chain.filter(exchange));
             }
         }
         return chain.filter(exchange);
+    }
+
+    private String maskUri(String uri) {
+        if (uri == null || !uri.contains("?")) {
+            return uri;
+        }
+        return uri.split("\\?")[0] + "?******";
     }
 }

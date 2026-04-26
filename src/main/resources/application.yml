@@ -47,27 +47,8 @@ spring:
           filters:
             - StripPrefix=0
         
-        # LLM Proxy Route: Forward /v1/chat/** to OpenAI/DeepSeek
-        - id: llm-proxy-route
-          uri: https://api.openai.com
-          predicates:
-            - Path=/v1/chat/**
-          filters:
-            - name: AiBillingFilter
-
-        # # Gemini Proxy Route
-        # - id: gemini-route
-        #   uri: https://generativelanguage.googleapis.com
-        #   predicates:
-        #     - Path=/gemini/**
-        #   filters:
-        #     - StripPrefix=1
-        #     - AddRequestParameter=key, ${GEMINI_API_KEY}
   security:
     login-url: /oauth2/authorization/casdoor
-    ignore:
-      urls:
-        - /api/public/**
     oauth2:
       client:
         registration:
@@ -81,11 +62,8 @@ spring:
         provider:
           casdoor:
             # Casdoor 的 OIDC 发现地址 (Discovery Endpoint)
-            issuer-uri: https://tao-lan.122577.xyz:8381
-logging:
-  level:
-    org.springframework.security: DEBUG
-    org.springframework.web: DEBUG
+            # 在测试环境下不配置 issuer-uri 以禁用 OIDC 发现，配置在 application-prod.yml 中
+
 app:
   # 本地运行的 Angular 默认地址
   frontend-url: ${FRONTEND_URL:https://122577.xyz}
@@ -93,3 +71,19 @@ app:
   jwt:
     # openssl rand -base64 32
     secret: ${JWT_SECRET:your-256-bit-secret-your-256-bit-secret}
+  security:
+    ignore:
+      urls:
+        - /api/public/**
+        - /favicon.ico
+        - /actuator/health
+        - /api/test/**
+        - /login/**
+        - /error
+        - /oauth2/**
+        - /logout
+
+logging:
+  level:
+    org.springframework.security: DEBUG
+    org.springframework.web: DEBUG

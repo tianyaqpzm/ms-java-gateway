@@ -7,7 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 @Component
-@ConfigurationProperties(prefix = "security.ignore") // 对应你的 yaml 前缀
+@ConfigurationProperties(prefix = "app.security.ignore") // 使用自定义前缀，避免与 spring.security 官方配置冲突导致读取失败
 public class IgnoreWhiteProperties {
     private List<String> urls = new ArrayList<>();
 

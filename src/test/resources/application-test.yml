@@ -1,0 +1,59 @@
+spring:
+  security:
+    login-url: /oauth2/authorization/casdoor
+    oauth2:
+      client:
+        registration:
+          casdoor:
+            client-id: mock-id
+            client-secret: mock-secret
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/casdoor"
+            scope: openid, profile, email
+        provider:
+          casdoor:
+            authorization-uri: http://localhost:8089/casdoor-oidc-mock/authorize
+            token-uri: http://localhost:8089/casdoor-oidc-mock/token
+            jwk-set-uri: http://localhost:8089/casdoor-oidc-mock/jwks
+            user-info-uri: http://localhost:8089/casdoor-oidc-mock/userinfo
+            user-name-attribute: sub
+  cloud:
+    nacos:
+      discovery:
+        enabled: false
+        server-addr: localhost:8848
+      config:
+        enabled: false
+        server-addr: localhost:8848
+        import-check:
+          enabled: false
+    gateway:
+      discovery:
+        locator:
+          enabled: false
+      routes:
+        - id: test_route
+          uri: http://127.0.0.1:8080
+          predicates:
+            - Path=/api/test/**
+
+app:
+  security:
+    ignore:
+      urls:
+        - /api/public/**
+        - /favicon.ico
+        - /actuator/health
+        - /login/**
+        - /error
+        - /oauth2/**
+        - /logout
+  frontend-url: https://test.example.com
+  cookie-domain: example.com
+  jwt:
+    secret: test-secret-key-must-be-at-least-256-bits-long!!
+
+logging:
+  level:
+    root: WARN
+    com.dark.gateway: DEBUG

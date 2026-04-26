@@ -1,136 +1,148 @@
 package com.dark.gateway.filter;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.cloud.gateway.filter.GatewayFilterChain;
-import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.Ordered;
-import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
-import org.springframework.http.server.reactive.ServerHttpResponse;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.util.PathMatcher;
 import org.springframework.web.server.ServerWebExchange;
-import io.jsonwebtoken.Jwts;
+import org.springframework.web.server.WebFilter;
+import org.springframework.web.server.WebFilterChain;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 
 @Slf4j
 @Component
-public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
+public class JwtAuthenticationFilter implements WebFilter, Ordered {
 
+    private static final String ALREADY_FILTERED =
+            JwtAuthenticationFilter.class.getName() + ".FILTERED";
     private final PathMatcher pathMatcher = new AntPathMatcher();
 
-    @org.springframework.beans.factory.annotation.Value("${app.jwt.secret}")
+    @Value("${app.jwt.secret:default-secret-placeholder-must-be-long-enough}")
     private String jwtSecret;
 
     @Autowired
-    private IgnoreWhiteProperties ignoreWhiteProperties; // 注入白名单配置
+    private IgnoreWhiteProperties ignoreWhiteProperties;
 
-    @org.springframework.beans.factory.annotation.Value("${spring.security.login-url}")
+    @Value("${spring.security.login-url:/login}")
     private String loginUrl;
 
     @Override
-    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+    public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
+        if (exchange.getAttribute(ALREADY_FILTERED) != null) {
+            return chain.filter(exchange);
+        }
+        exchange.getAttributes().put(ALREADY_FILTERED, true);
+
         ServerHttpRequest request = exchange.getRequest();
+        String url = request.getURI().getPath();
 
-        // Skip auth for login or public endpoints if needed
-        if (request.getURI().getPath().startsWith("/api/public")) {
+        // 0. 放行 OPTIONS 请求 (CORS 预检)
+        if (org.springframework.http.HttpMethod.OPTIONS.equals(request.getMethod())) {
             return chain.filter(exchange);
         }
-        String url = exchange.getRequest().getURI().getPath();
-        // 2. 🔥【关键修复】检查白名单：如果匹配，直接放行，不做 Token 校验
+
+        // 1. 检查白名单
         if (isWhiteList(url)) {
+            log.debug("【JwtFilter】Whitelist pass: {}", url);
             return chain.filter(exchange);
         }
 
-        String token = null;
+        String token = extractToken(request);
 
-        // 1. 优先尝试从 HttpOnly Cookie 中获取 (浏览器环境)
-        org.springframework.http.HttpCookie cookie = request.getCookies().getFirst("jwt_token");
-        if (cookie != null) {
-            token = cookie.getValue();
-        }
-        // 2. 兜底策略：从 Authorization Header 中获取 (给 Python Agent 或 API 调用使用)
-        else {
-            String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-            if (authHeader != null && authHeader.startsWith("Bearer ")) {
-                token = authHeader.substring(7);
-            }
-        }
-
-        // 3. 如果什么都没拿到，返回 401 触发重定向重新登录
+        // 2. 如果没拿到 Token，交由后面的 Security 拦截器处理 (会触发 401/重定向)
         if (token == null) {
-            return onError(exchange, "Missing Authorization Cookie or Header",
-                    HttpStatus.UNAUTHORIZED);
+            log.debug("【JwtFilter】No token found for: {}", url);
+            return chain.filter(exchange);
         }
+
         try {
             Claims claims = validateAndParseToken(token);
-            
-            // Extract standard fields, assuming Cardoor uses standard claims like sub, name, etc.
             String userId = claims.getSubject();
-            String username = claims.get("name", String.class);
-            if (username == null) username = claims.get("username", String.class);
-            String avatar = claims.get("picture", String.class);
-            if (avatar == null) avatar = claims.get("avatar", String.class);
 
-            // Mutate the request, pass the downstream headers cleanly
-            ServerHttpRequest mutatedRequest = request.mutate()
-                    .header("X-User-Id", userId != null ? userId : "")
-                    .header("X-User-Name", username != null ? username : "")
-                    .header("X-User-Avatar", avatar != null ? avatar : "")
-                    .build();
-            
-            exchange = exchange.mutate().request(mutatedRequest).build();
+            log.debug("【JwtFilter】Token validated for user: {}", userId);
+
+            // 3. 构建 Authentication 对象并注入 SecurityContext
+            UsernamePasswordAuthenticationToken auth =
+                    new UsernamePasswordAuthenticationToken(userId, null, Collections.emptyList());
+
+            // 透明透传用户信息给下游微服务
+            String username = claims.get("name", String.class);
+            if (username == null)
+                username = claims.get("username", String.class);
+            String avatar = claims.get("picture", String.class);
+            if (avatar == null)
+                avatar = claims.get("avatar", String.class);
+
+            ServerHttpRequest mutatedRequest =
+                    request.mutate().header("X-User-Id", userId != null ? userId : "")
+                            .header("X-User-Name", username != null ? username : "")
+                            .header("X-User-Avatar", avatar != null ? avatar : "").build();
+
+            return chain.filter(exchange.mutate().request(mutatedRequest).build())
+                    .contextWrite(ReactiveSecurityContextHolder.withAuthentication(auth));
+
         } catch (Exception e) {
-            log.error("Token validation failed: {}", e.getMessage());
+            log.error("【JwtFilter】Token validation failed for {}: {}", url, e.getMessage());
             return onError(exchange, "Invalid Token", HttpStatus.UNAUTHORIZED);
         }
+    }
 
-        return chain.filter(exchange);
+    private String extractToken(ServerHttpRequest request) {
+        // 1. 优先从 HttpOnly Cookie 获取
+        org.springframework.http.HttpCookie cookie = request.getCookies().getFirst("jwt_token");
+        if (cookie != null)
+            return cookie.getValue();
+
+        // 2. 兜底从 Authorization Header 获取
+        String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            return authHeader.substring(7);
+        }
+        return null;
     }
 
     private Claims validateAndParseToken(String token) {
-        SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
+        byte[] secretBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
+        SecretKey key = Keys.hmacShaKeyFor(secretBytes);
         return Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token).getBody();
     }
 
     private Mono<Void> onError(ServerWebExchange exchange, String err, HttpStatus httpStatus) {
-        ServerHttpResponse response = exchange.getResponse();
-        response.setStatusCode(httpStatus);
-
-        // Return JSON error with redirect URL
-        String jsonResponse =
-                String.format("{\"url\": \"%s\", \"message\": \"%s\"}", loginUrl, err);
-        byte[] bytes = jsonResponse.getBytes(StandardCharsets.UTF_8);
-        DataBuffer buffer = response.bufferFactory().wrap(bytes);
-        response.getHeaders().add("Content-Type", "application/json");
-
-        return response.writeWith(Mono.just(buffer));
+        exchange.getResponse().setStatusCode(httpStatus);
+        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
+        String jsonResponse = String.format("{\"url\": \"%s\", \"message\": \"%s\"}",
+                loginUrl, err);
+        return exchange.getResponse().writeWith(Mono.just(exchange.getResponse().bufferFactory()
+                .wrap(jsonResponse.getBytes(StandardCharsets.UTF_8))));
     }
 
-    /**
-     * 判断路径是否在白名单中
-     */
     private boolean isWhiteList(String url) {
-        // 遍历配置中的白名单列表
+        if (ignoreWhiteProperties == null || ignoreWhiteProperties.getUrls() == null)
+            return false;
         for (String pattern : ignoreWhiteProperties.getUrls()) {
-            // 使用 AntPathMatcher 支持 ** 通配符
-            if (pathMatcher.match(pattern, url)) {
+            if (pathMatcher.match(pattern, url))
                 return true;
-            }
         }
         return false;
     }
 
     @Override
     public int getOrder() {
-        return -100; // High priority
+        return -100;
     }
 }
