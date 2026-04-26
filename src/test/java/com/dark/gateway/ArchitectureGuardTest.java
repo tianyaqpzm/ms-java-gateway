@@ -19,7 +19,7 @@ import com.dark.gateway.filter.SecurityConfig;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
-class ArchitectureGuardTest {
+public class ArchitectureGuardTest {
 
     @Autowired
     private ApplicationContext ctx;
@@ -27,7 +27,7 @@ class ArchitectureGuardTest {
     // GA-01: SecurityConfig Bean 成功创建
     @Test
     @DisplayName("GA-01: SecurityConfig Bean 可正常加载")
-    void securityConfigBeanShouldLoad() {
+    public void securityConfigBeanShouldLoad() {
         SecurityConfig config = ctx.getBean(SecurityConfig.class);
         assertThat(config).isNotNull();
     }
@@ -35,7 +35,7 @@ class ArchitectureGuardTest {
     // GA-02: JwtAuthenticationFilter 注册为 WebFilter 且 order = -100
     @Test
     @DisplayName("GA-02: JwtAuthenticationFilter 是 WebFilter 且 order=-100")
-    void jwtFilterShouldBeWebFilterWithCorrectOrder() {
+    public void jwtFilterShouldBeWebFilterWithCorrectOrder() {
         JwtAuthenticationFilter filter = ctx.getBean(JwtAuthenticationFilter.class);
         assertThat(filter).isInstanceOf(WebFilter.class);
         assertThat(filter).isInstanceOf(Ordered.class);
@@ -45,7 +45,7 @@ class ArchitectureGuardTest {
     // GA-03: RedirectSaveFilter 注册为 WebFilter
     @Test
     @DisplayName("GA-03: RedirectSaveFilter 是 WebFilter")
-    void redirectSaveFilterShouldBeWebFilter() {
+    public void redirectSaveFilterShouldBeWebFilter() {
         RedirectSaveFilter filter = ctx.getBean(RedirectSaveFilter.class);
         assertThat(filter).isInstanceOf(WebFilter.class);
     }
@@ -53,7 +53,7 @@ class ArchitectureGuardTest {
     // GA-04: IgnoreWhiteProperties 正确绑定 YAML list
     @Test
     @DisplayName("GA-04: IgnoreWhiteProperties 正确绑定白名单 URL 列表")
-    void ignoreWhitePropertiesShouldBindUrls() {
+    public void ignoreWhitePropertiesShouldBindUrls() {
         IgnoreWhiteProperties props = ctx.getBean(IgnoreWhiteProperties.class);
         assertThat(props.getUrls()).isNotEmpty().contains("/actuator/health", "/oauth2/**",
                 "/logout");
@@ -62,7 +62,7 @@ class ArchitectureGuardTest {
     // GA-05: classpath 不包含 DispatcherServlet (架构约束: 严格非阻塞)
     @Test
     @DisplayName("GA-05: classpath 不含 DispatcherServlet (非阻塞架构)")
-    void shouldNotContainServletStack() {
+    public void shouldNotContainServletStack() {
         boolean hasServlet;
         try {
             Class.forName("org.springframework.web.servlet.DispatcherServlet");
