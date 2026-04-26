@@ -17,7 +17,7 @@ spring:
           enabled: false
       routes:
         - id: test_route
-          uri: http://localhost:8080
+          uri: http://127.0.0.1:8080
           predicates:
             - Path=/api/test/**
 

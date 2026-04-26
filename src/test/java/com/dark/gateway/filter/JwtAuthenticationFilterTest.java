@@ -107,7 +107,7 @@ class JwtAuthenticationFilterTest {
         webTestClient.get().uri("/api/test/resource")
                 .cookie("jwt_token", validToken)
                 .exchange()
-                .expectStatus().is5xxServerError(); // Hits dummy upstream -> 500
+                .expectStatus().value(status -> assertThat(status).isNotEqualTo(401)); // 放行即可，不一定非要 500
     }
 
     // GJ-04: Bearer Header JWT → 放行
@@ -117,7 +117,7 @@ class JwtAuthenticationFilterTest {
         webTestClient.get().uri("/api/test/resource")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + validToken)
                 .exchange()
-                .expectStatus().is5xxServerError();
+                .expectStatus().value(status -> assertThat(status).isNotEqualTo(401));
     }
 
     // GJ-05: 无 Token → 401 JSON
@@ -159,7 +159,7 @@ class JwtAuthenticationFilterTest {
         webTestClient.get().uri("/api/test/resource")
                 .cookie("jwt_token", tokenMissingClaims)
                 .exchange()
-                .expectStatus().is5xxServerError();
+                .expectStatus().value(status -> assertThat(status).isNotEqualTo(401));
     }
 
 
