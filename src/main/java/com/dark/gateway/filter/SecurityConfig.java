@@ -1,16 +1,13 @@
 package com.dark.gateway.filter;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
-import java.util.Map;
 import javax.crypto.SecretKey;
-
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.buffer.DataBuffer;
-import org.springframework.http.HttpCookie;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -21,20 +18,15 @@ import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.ServerAuthenticationEntryPoint;
-import org.springframework.security.web.server.authentication.RedirectServerAuthenticationEntryPoint;
 import org.springframework.security.web.server.authentication.ServerAuthenticationSuccessHandler;
 import org.springframework.security.web.server.authentication.logout.RedirectServerLogoutSuccessHandler;
-import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatchers;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.reactive.CorsConfigurationSource;
 import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
-
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
-
-import java.net.URI;
 
 @Configuration
 @EnableWebFluxSecurity
@@ -56,7 +48,8 @@ public class SecurityConfig {
     private final IgnoreWhiteProperties ignoreWhiteProperties;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    public SecurityConfig(IgnoreWhiteProperties ignoreWhiteProperties, JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(IgnoreWhiteProperties ignoreWhiteProperties,
+            JwtAuthenticationFilter jwtAuthenticationFilter) {
         this.ignoreWhiteProperties = ignoreWhiteProperties;
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
     }
@@ -65,22 +58,22 @@ public class SecurityConfig {
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
         String[] ignoreUrls = ignoreWhiteProperties.getUrls().toArray(new String[0]);
 
-        return http
-                .csrf(csrf -> csrf.disable())
+        return http.csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .addFilterAt(jwtAuthenticationFilter, SecurityWebFiltersOrder.AUTHENTICATION)
-                .authorizeExchange(
-                        exchanges -> exchanges
-                                .pathMatchers(HttpMethod.OPTIONS).permitAll()
-                                .pathMatchers(ignoreUrls).permitAll()
-                                .pathMatchers("/api/public/**", "/favicon.ico", "/actuator/**").permitAll()
-                                .anyExchange().authenticated())
+                .authorizeExchange(exchanges -> exchanges.pathMatchers(HttpMethod.OPTIONS)
+                        .permitAll().pathMatchers(ignoreUrls).permitAll()
+                        .pathMatchers("/api/public/**", "/favicon.ico", "/actuator/**").permitAll()
+                        .anyExchange().authenticated())
                 .oauth2Login(oauth2 -> oauth2
+                        .authenticationFailureHandler((webFilterExchange, exception) -> {
+                            log.error("【OAuth2 登录失败】原因: {}", exception.getMessage());
+                            return Mono.error(exception);
+                        })
                         .authenticationSuccessHandler(authenticationSuccessHandler()))
                 .exceptionHandling(exceptionHandling -> exceptionHandling
                         .authenticationEntryPoint(serverAuthenticationEntryPoint()))
-                .logout(logout -> logout
-                        .logoutUrl("/logout")
+                .logout(logout -> logout.logoutUrl("/logout")
                         .logoutSuccessHandler(new RedirectServerLogoutSuccessHandler()))
                 .build();
     }
@@ -90,8 +83,8 @@ public class SecurityConfig {
      */
     private ServerAuthenticationSuccessHandler authenticationSuccessHandler() {
         return (webFilterExchange, authentication) -> {
-            log.info("【登录成功】生成 JWT Token 并写入 Cookie...");
-            
+            log.info("【登录成功】生成 JWT Token 并写入 Cookie...{}", cookieDomain);
+
             OidcUser oidcUser = (OidcUser) authentication.getPrincipal();
             String userId = oidcUser.getSubject();
             String name = oidcUser.getName();
@@ -99,39 +92,40 @@ public class SecurityConfig {
 
             // 1. 生成 JWT
             SecretKey key = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
-            String token = Jwts.builder()
-                    .setSubject(userId)
-                    .claim("name", name)
-                    .claim("picture", picture != null ? picture : "")
-                    .setIssuedAt(new Date())
+            String token = Jwts.builder().setSubject(userId).claim("name", name)
+                    .claim("picture", picture != null ? picture : "").setIssuedAt(new Date())
                     .setExpiration(new Date(System.currentTimeMillis() + 86400000)) // 24小时过期
-                    .signWith(key)
-                    .compact();
+                    .signWith(key).compact();
 
             // 2. 写入 HttpOnly Cookie
-            ResponseCookie jwtCookie = ResponseCookie.from("jwt_token", token)
-                    .path("/")
-                    .domain(cookieDomain)
-                    .httpOnly(true)
-                    .secure(true) // 生产环境必须开启
-                    .sameSite("Lax")
-                    .maxAge(86400)
-                    .build();
+            ResponseCookie jwtCookie = ResponseCookie.from("jwt_token", token).path("/")
+                    .domain(cookieDomain).httpOnly(true).secure(true) // 生产环境必须开启
+                    .sameSite("Lax").maxAge(86400).build();
+
 
             webFilterExchange.getExchange().getResponse().addCookie(jwtCookie);
 
             // 3. 处理重定向地址
-            return webFilterExchange.getExchange().getSession()
-                    .flatMap(session -> {
-                        String redirectUri = session.getAttribute("CUSTOM_REDIRECT_URI");
-                        if (redirectUri == null) {
-                            redirectUri = frontendUrl;
-                        }
-                        log.info("【重定向】Redirecting to: {}", redirectUri);
-                        webFilterExchange.getExchange().getResponse().setStatusCode(HttpStatus.FOUND);
-                        webFilterExchange.getExchange().getResponse().getHeaders().setLocation(URI.create(redirectUri));
-                        return Mono.empty();
-                    });
+            return webFilterExchange.getExchange().getSession().flatMap(session -> {
+                String redirectUri = session.getAttribute("CUSTOM_REDIRECT_URI");
+                if (redirectUri == null) {
+                    redirectUri = frontendUrl;
+                }
+                log.info("【重定向】Redirecting to: {}", redirectUri);
+                
+                // 同时把 token 带在 URL 上，方便前端获取并存入 localStorage (作为双保险)
+                String finalRedirectUri = redirectUri;
+                if (finalRedirectUri.contains("?")) {
+                    finalRedirectUri += "&token=" + token;
+                } else {
+                    finalRedirectUri += "?token=" + token;
+                }
+                
+                webFilterExchange.getExchange().getResponse().setStatusCode(HttpStatus.FOUND);
+                webFilterExchange.getExchange().getResponse().getHeaders()
+                        .setLocation(URI.create(finalRedirectUri));
+                return Mono.empty();
+            });
         };
     }
 
@@ -170,7 +164,8 @@ public class SecurityConfig {
     @org.springframework.core.annotation.Order(-200) // 运行在所有过滤器之前
     public org.springframework.web.server.WebFilter logFilter() {
         return (exchange, chain) -> {
-            log.info("【网关请求】{} {}", exchange.getRequest().getMethod(), exchange.getRequest().getURI().getPath());
+            log.info("【网关请求】{} {}", exchange.getRequest().getMethod(),
+                    exchange.getRequest().getURI().getPath());
             return chain.filter(exchange);
         };
     }
