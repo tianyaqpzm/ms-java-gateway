@@ -1,6 +1,22 @@
 spring:
   security:
     login-url: /oauth2/authorization/casdoor
+    oauth2:
+      client:
+        registration:
+          casdoor:
+            client-id: mock-id
+            client-secret: mock-secret
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/casdoor"
+            scope: openid, profile, email
+        provider:
+          casdoor:
+            authorization-uri: http://localhost:8089/casdoor-oidc-mock/authorize
+            token-uri: http://localhost:8089/casdoor-oidc-mock/token
+            jwk-set-uri: http://localhost:8089/casdoor-oidc-mock/jwks
+            user-info-uri: http://localhost:8089/casdoor-oidc-mock/userinfo
+            user-name-attribute: sub
   cloud:
     nacos:
       discovery:
