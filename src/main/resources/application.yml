@@ -62,7 +62,7 @@ spring:
         provider:
           casdoor:
             # Casdoor 的 OIDC 发现地址 (Discovery Endpoint)
-            issuer-uri: https://tao-lan.122577.xyz:8381
+            # 在测试环境下不配置 issuer-uri 以禁用 OIDC 发现，配置在 application-prod.yml 中
 
 app:
   # 本地运行的 Angular 默认地址

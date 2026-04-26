@@ -42,6 +42,7 @@ trigger: always_on
 6. **测试规范 (Testing Standards)**:
    - **环境隔离**: 测试配置文件 (`application-test.yml`) 中的 `uri` 尽量使用 `127.0.0.1` 而非 `localhost`，以避免 DNS 解析带来的潜在延迟或超时。
    - **鲁棒断言**: 针对 Filter 的功能测试，断言应侧重于 Filter 是否正确放行或拦截（例如断言 `status != 401`），而非具体的下游业务返回码（如 500/404），除非是测试特定的错误处理器。
+   - **OIDC Mock**: 测试环境下必须在 `application-test.yml` 中显式配置 `issuer-uri` 的各个对应端点为 mock 地址，禁止让 Spring Security 在启动阶段尝试自动发现（OIDC Discovery）外部配置。
 
 # Key Context (关键背景)
 该网关位于前端与后端服务之间。它是 Python AI Agent (SSE流) 和 Java 业务后端的统一入口，必须能高效处理高并发的长连接。
