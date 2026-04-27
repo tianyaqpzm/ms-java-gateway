@@ -102,4 +102,4 @@ jobs:
               tianyaqpzm/ms-java-gateway:${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.number) || 'master' }}
             
             # 清理无用镜像
-            docker image prune -f
+            docker image prune -af
