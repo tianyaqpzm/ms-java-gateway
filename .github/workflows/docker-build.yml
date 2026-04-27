@@ -1,4 +1,4 @@
-name: Build API Gateway DockerImage
+name: Build MS Java Gateway DockerImage
 
 on:
   push:
@@ -45,7 +45,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            tianyaqpzm/api-gateway
+            tianyaqpzm/ms-java-gateway
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -81,15 +81,15 @@ jobs:
           port: ${{ secrets.PORT || 22 }}
           script: |
             # 停止并删除旧容器
-            docker stop api-gateway || true
-            docker rm api-gateway || true
+            docker stop ms-java-gateway || true
+            docker rm ms-java-gateway || true
             
             # 拉取最新镜像
-            docker pull tianyaqpzm/api-gateway:${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.number) || 'master' }}
+            docker pull tianyaqpzm/ms-java-gateway:${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.number) || 'master' }}
             
             # 启动新容器
             docker run -d \
-              --name api-gateway \
+              --name ms-java-gateway \
               --restart unless-stopped \
               --network pei-network \
               --expose 8281 \
@@ -99,7 +99,7 @@ jobs:
               -e NACOS_USERNAME=${{ secrets.NACOS_USERNAME }} \
               -e NACOS_PASSWORD=${{ secrets.NACOS_PASSWORD }} \
               -e NACOS_NAMESPACE=${{ vars.NACOS_NAMESPACE }} \
-              tianyaqpzm/api-gateway:${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.number) || 'master' }}
+              tianyaqpzm/ms-java-gateway:${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.number) || 'master' }}
             
             # 清理无用镜像
-            docker image prune -f
+            docker image prune -af

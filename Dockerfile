@@ -26,8 +26,8 @@ WORKDIR /app
 # 1. 创建非 root 用户
 RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 
-# 2. 从构建阶段复制 jar 包 (假设 jar 包名包含 gateway)
-COPY --from=build /app/target/gateway*.jar /app/api-gateway.jar
+# 2. 从构建阶段复制 jar 包
+COPY --from=build /app/target/ms-java-gateway*.jar /app/ms-java-gateway.jar
 
 # 3. 复制并设置 entrypoint.sh
 COPY entrypoint.sh /app/entrypoint.sh
@@ -53,4 +53,4 @@ USER appuser
 # 6. 设置启动命令
 ENTRYPOINT ["/app/entrypoint.sh"]
 
-CMD ["sh", "-c", "java $JAVA_OPTS -jar /app/api-gateway.jar"]
+CMD ["sh", "-c", "java $JAVA_OPTS -jar /app/ms-java-gateway.jar"]

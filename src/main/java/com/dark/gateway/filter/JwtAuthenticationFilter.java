@@ -58,7 +58,7 @@ public class JwtAuthenticationFilter implements WebFilter, Ordered {
 
         // 1. 检查白名单
         if (isWhiteList(url)) {
-            log.debug("【JwtFilter】Whitelist pass: {}", url);
+            log.info("【JwtFilter】Whitelist pass: {}", url);
             return chain.filter(exchange);
         }
 
@@ -66,7 +66,7 @@ public class JwtAuthenticationFilter implements WebFilter, Ordered {
 
         // 2. 如果没拿到 Token，交由后面的 Security 拦截器处理 (会触发 401/重定向)
         if (token == null) {
-            log.debug("【JwtFilter】No token found for: {}", url);
+            log.info("【JwtFilter】No token found (Cookie or Authorization header) for protected resource: {}", url);
             return chain.filter(exchange);
         }
 
@@ -74,7 +74,7 @@ public class JwtAuthenticationFilter implements WebFilter, Ordered {
             Claims claims = validateAndParseToken(token);
             String userId = claims.getSubject();
 
-            log.debug("【JwtFilter】Token validated for user: {}", userId);
+            log.info("【JwtFilter】Token validated for user: {}", userId);
 
             // 3. 构建 Authentication 对象并注入 SecurityContext
             UsernamePasswordAuthenticationToken auth =
@@ -97,8 +97,8 @@ public class JwtAuthenticationFilter implements WebFilter, Ordered {
                     .contextWrite(ReactiveSecurityContextHolder.withAuthentication(auth));
 
         } catch (Exception e) {
-            log.error("【JwtFilter】Token validation failed for {}: {}", url, e.getMessage());
-            return onError(exchange, "Invalid Token", HttpStatus.UNAUTHORIZED);
+            log.error("【JwtFilter】Token validation failed for {}: {}, Reason: {}", url, token.substring(0, Math.min(token.length(), 10)) + "...", e.getMessage());
+            return onError(exchange, "Invalid Token: " + e.getMessage(), HttpStatus.UNAUTHORIZED);
         }
     }
 

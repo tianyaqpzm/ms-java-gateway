@@ -27,7 +27,7 @@ trigger: always_on
    - **路由配置**: 优先在 `application.yaml` 中配置，特殊逻辑使用 Java Config (`RouteLocator`)。
    - **过滤器**: 实现 `GlobalFilter` 来处理统一鉴权 (`AuthFilter`) 和日志记录。
    - **转发逻辑**:
-     - 路径 `/api/agent/**` -> 转发给 Python Agent 服务。
+     - 路径 `/api/agent/**` -> 转发给 ms-py-agent 服务。
      - 路径 `/api/business/**` -> 转发给 Java Backend 服务。
 
 4. **响应处理**:
@@ -42,7 +42,11 @@ trigger: always_on
 6. **测试规范 (Testing Standards)**:
    - **环境隔离**: 测试配置文件 (`application-test.yml`) 中的 `uri` 尽量使用 `127.0.0.1` 而非 `localhost`，以避免 DNS 解析带来的潜在延迟或超时。
    - **鲁棒断言**: 针对 Filter 的功能测试，断言应侧重于 Filter 是否正确放行或拦截（例如断言 `status != 401`），而非具体的下游业务返回码（如 500/404），除非是测试特定的错误处理器。
-   - **OIDC Mock**: 测试环境下必须在 `application-test.yml` 中显式配置 `issuer-uri` 的各个对应端点为 mock 地址，禁止让 Spring Security 在启动阶段尝试自动发现（OIDC Discovery）外部配置。
+   - **OIDC 配置隔离**: 禁止将 Auth0/OIDC 的 `issuer-uri` 放置在 `application.yml` (通用配置) 中，这会触发测试环境下的自动发现尝试。
+   - **生产配置提取**: `issuer-uri` 必须仅存在于 `application-prod.yml` 或特定部署 profile 中。测试环境下必须在 `application-test.yml` 显式 Mock 所有的 OIDC 端点（如 `authorization-uri`, `token-uri`）。
+
+7. **可观测性与部署 (Observability & Deployment)**:
+   - **请求流转日志**: 关键的网关入口请求（`【网关请求】`）和出口响应（`【网关响应完成】`）必须使用 `INFO` 级别，以确保在生产环境下能追踪请求链路。
 
 # Key Context (关键背景)
-该网关位于前端与后端服务之间。它是 Python AI Agent (SSE流) 和 Java 业务后端的统一入口，必须能高效处理高并发的长连接。
+该网关 (`ms-java-gateway`) 位于前端与后端服务之间。它是系统唯一的对外流量入口，负责统一的路由分发、流量控制，并对接 Casdoor 执行集中式的安全拦截与认证鉴权。它必须能高效处理高并发的长连接（如 SSE 流）。

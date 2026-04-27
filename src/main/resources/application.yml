@@ -24,24 +24,24 @@ spring:
       routes:
         # Business Route: Forward /api/business/** to business-service
         - id: business-route
-          uri: lb://business-service
+          uri: lb://ms-java-biz
           predicates:
             - Path=/api/business/**
           filters:
             - StripPrefix=2
 
-        # Agent Route: Forward /rest/dark/v1/agent/** to python-agent
-        # ⚠️ 必须在 timekeeper-route 之前声明，否则 /rest/dark/v1/** 会先匹配
+        # Agent Route: Forward /rest/dark/v1/agent/** to ms-py-agent
+        # ⚠️ 必须在 biz-v1-route 之前声明，否则 /rest/dark/v1/** 会先匹配
         - id: agent-route
-          uri: lb://python-agent
+          uri: lb://ms-py-agent
           predicates:
             - Path=/rest/dark/v1/agent/**
           filters:
             - StripPrefix=0
 
-        # TimeKeeper Route: Forward /rest/dark/v1/** to ai-langchain4j (业务后端)
-        - id: timekeeper-route
-          uri: lb://ai-langchain4j
+        # Biz V1 Route: Forward /rest/dark/v1/** to ms-java-biz
+        - id: biz-v1-route
+          uri: lb://ms-java-biz
           predicates:
             - Path=/rest/dark/v1/**
           filters:
@@ -85,5 +85,7 @@ app:
 
 logging:
   level:
-    org.springframework.security: DEBUG
-    org.springframework.web: DEBUG
+    com.alibaba.nacos.client.naming: ERROR
+    com.alibaba.nacos.common.remote.client: ERROR 
+    # org.springframework.security: DEBUG
+    # org.springframework.web: DEBUG
