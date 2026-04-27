@@ -164,9 +164,19 @@ public class SecurityConfig {
     @org.springframework.core.annotation.Order(-200) // 运行在所有过滤器之前
     public org.springframework.web.server.WebFilter logFilter() {
         return (exchange, chain) -> {
-            log.info("【网关请求】{} {}", exchange.getRequest().getMethod(),
-                    exchange.getRequest().getURI().getPath());
-            return chain.filter(exchange);
+            String path = exchange.getRequest().getURI().getPath();
+            String method = exchange.getRequest().getMethod().name();
+            
+            log.info("【网关请求】{} {}", method, path);
+            
+            return chain.filter(exchange).doFinally(signalType -> {
+                HttpStatus code = (HttpStatus) exchange.getResponse().getStatusCode();
+                if (code != null && code.isError()) {
+                    log.error("【网关响应异常】{} {} -> {}", method, path, code.value());
+                } else if (code != null) {
+                    log.info("【网关响应完成】{} {} -> {}", method, path, code.value());
+                }
+            });
         };
     }
 }

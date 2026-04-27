@@ -85,5 +85,7 @@ app:
 
 logging:
   level:
-    org.springframework.security: DEBUG
-    org.springframework.web: DEBUG
+    com.alibaba.nacos.client.naming: ERROR
+    com.alibaba.nacos.common.remote.client: ERROR 
+    # org.springframework.security: DEBUG
+    # org.springframework.web: DEBUG
