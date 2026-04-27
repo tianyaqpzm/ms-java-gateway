@@ -23,8 +23,10 @@ FROM eclipse-temurin:17-jre
 
 WORKDIR /app
 
-# 1. 创建非 root 用户
-RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+# 1. 创建非 root 用户并安装 curl (用于健康检查)
+RUN apt-get update && apt-get install -y curl && \
+    rm -rf /var/lib/apt/lists/* && \
+    groupadd -r appgroup && useradd -r -g appgroup appuser
 
 # 2. 从构建阶段复制 jar 包
 COPY --from=build /app/target/ms-java-gateway*.jar /app/ms-java-gateway.jar
