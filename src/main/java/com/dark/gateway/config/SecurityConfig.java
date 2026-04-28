@@ -26,6 +26,7 @@ import org.springframework.web.cors.reactive.CorsConfigurationSource;
 import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 
 import com.dark.gateway.filter.JwtAuthenticationFilter;
+import com.dark.gateway.filter.RedirectSaveFilter;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -43,7 +44,7 @@ import reactor.core.publisher.Mono;
 @Slf4j
 public class SecurityConfig {
 
-    @Value("${app.frontend-url:https://122577.xyz}")
+    @Value("${app.frontend-url}")
     private String frontendUrl;
 
     @Value("${spring.security.login-url}")
@@ -52,7 +53,7 @@ public class SecurityConfig {
     @Value("${app.jwt.secret}")
     private String jwtSecret;
 
-    @Value("${app.cookie-domain:122577.xyz}")
+    @Value("${app.cookie-domain}")
     private String cookieDomain;
 
     private final IgnoreWhiteProperties ignoreWhiteProperties;
@@ -76,6 +77,7 @@ public class SecurityConfig {
                         .pathMatchers("/api/public/**", "/favicon.ico", "/actuator/**").permitAll()
                         .anyExchange().authenticated())
                 .oauth2Login(oauth2 -> oauth2
+                        .authorizationRequestRepository(cookieAuthorizationRequestRepository())
                         .authenticationFailureHandler((webFilterExchange, exception) -> {
                             log.error("【OAuth2 登录失败】原因: {}", exception.getMessage());
                             return Mono.error(exception);
@@ -86,6 +88,11 @@ public class SecurityConfig {
                 .logout(logout -> logout.logoutUrl("/logout")
                         .logoutSuccessHandler(new RedirectServerLogoutSuccessHandler()))
                 .build();
+    }
+
+    @Bean
+    public CookieOAuth2RequestRepository cookieAuthorizationRequestRepository() {
+        return new CookieOAuth2RequestRepository();
     }
 
     /**
@@ -116,26 +123,31 @@ public class SecurityConfig {
             webFilterExchange.getExchange().getResponse().addCookie(jwtCookie);
 
             // 3. 处理重定向地址
-            return webFilterExchange.getExchange().getSession().flatMap(session -> {
-                String redirectUri = session.getAttribute("CUSTOM_REDIRECT_URI");
-                if (redirectUri == null) {
-                    redirectUri = frontendUrl;
-                }
-                log.info("【重定向】Redirecting to: {}", redirectUri);
-                
-                // 同时把 token 带在 URL 上，方便前端获取并存入 localStorage (作为双保险)
-                String finalRedirectUri = redirectUri;
-                if (finalRedirectUri.contains("?")) {
-                    finalRedirectUri += "&token=" + token;
-                } else {
-                    finalRedirectUri += "?token=" + token;
-                }
-                
-                webFilterExchange.getExchange().getResponse().setStatusCode(HttpStatus.FOUND);
-                webFilterExchange.getExchange().getResponse().getHeaders()
-                        .setLocation(URI.create(finalRedirectUri));
-                return Mono.empty();
-            });
+            String redirectUri = webFilterExchange.getExchange().getRequest().getCookies()
+                    .getFirst(RedirectSaveFilter.REDIRECT_URI_COOKIE_NAME) != null
+                            ? webFilterExchange.getExchange().getRequest().getCookies()
+                                    .getFirst(RedirectSaveFilter.REDIRECT_URI_COOKIE_NAME).getValue()
+                            : frontendUrl;
+
+            // 清理 Cookie
+            webFilterExchange.getExchange().getResponse()
+                    .addCookie(ResponseCookie.from(RedirectSaveFilter.REDIRECT_URI_COOKIE_NAME, "")
+                            .path("/").maxAge(0).build());
+
+            log.info("【重定向】Redirecting to: {}", redirectUri);
+
+            // 同时把 token 带在 URL 上，方便前端获取并存入 localStorage (作为双保险)
+            String finalRedirectUri = redirectUri;
+            if (finalRedirectUri.contains("?")) {
+                finalRedirectUri += "&token=" + token;
+            } else {
+                finalRedirectUri += "?token=" + token;
+            }
+
+            webFilterExchange.getExchange().getResponse().setStatusCode(HttpStatus.FOUND);
+            webFilterExchange.getExchange().getResponse().getHeaders()
+                    .setLocation(URI.create(finalRedirectUri));
+            return Mono.empty();
         };
     }
 

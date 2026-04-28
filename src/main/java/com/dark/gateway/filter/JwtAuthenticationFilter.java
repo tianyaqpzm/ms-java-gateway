@@ -42,13 +42,13 @@ public class JwtAuthenticationFilter implements WebFilter, Ordered {
             JwtAuthenticationFilter.class.getName() + ".FILTERED";
     private final PathMatcher pathMatcher = new AntPathMatcher();
 
-    @Value("${app.jwt.secret:default-secret-placeholder-must-be-long-enough}")
+    @Value("${app.jwt.secret}")
     private String jwtSecret;
 
     @Autowired
     private IgnoreWhiteProperties ignoreWhiteProperties;
 
-    @Value("${spring.security.login-url:/login}")
+    @Value("${spring.security.login-url}")
     private String loginUrl;
 
     @Override

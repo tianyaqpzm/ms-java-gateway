@@ -2,6 +2,7 @@ package com.dark.gateway.filter;
 
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
@@ -14,6 +15,8 @@ import reactor.core.publisher.Mono;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class RedirectSaveFilter implements WebFilter {
 
+    public static final String REDIRECT_URI_COOKIE_NAME = "redirect_uri";
+
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         String path = exchange.getRequest().getURI().getPath();
@@ -24,19 +27,21 @@ public class RedirectSaveFilter implements WebFilter {
             String redirectParam = exchange.getRequest().getQueryParams().getFirst("redirect");
 
             if (redirectParam != null) {
-                // 如果目标地址包含 logout，则忽略，不存入 Session，防止登入后立刻又登出
+                // 如果目标地址包含 logout，则忽略，不存入 Cookie
                 if (redirectParam.contains("/logout")) {
                     return chain.filter(exchange);
                 }
 
-                // 把原页面地址存入 Session，供登录成功后使用
-                return exchange.getSession().flatMap(session -> {
-                    String maskedUri = maskUri(redirectParam);
-                    log.info("【RedirectSaveFilter】Saving CUSTOM_REDIRECT_URI={} in Session ID={}",
-                            maskedUri, session.getId());
-                    session.getAttributes().put("CUSTOM_REDIRECT_URI", redirectParam);
-                    return session.save().thenReturn(session); // 明确触发保存
-                }).then(chain.filter(exchange));
+                // 把原页面地址存入 Cookie，供登录成功后使用
+                log.info("【RedirectSaveFilter】Saving REDIRECT_URI={} in Cookie", maskUri(redirectParam));
+                ResponseCookie cookie = ResponseCookie.from(REDIRECT_URI_COOKIE_NAME, redirectParam)
+                        .path("/")
+                        .httpOnly(true)
+                        .secure(true)
+                        .sameSite("Lax")
+                        .maxAge(java.time.Duration.ofMinutes(5))
+                        .build();
+                exchange.getResponse().addCookie(cookie);
             }
         }
         return chain.filter(exchange);
