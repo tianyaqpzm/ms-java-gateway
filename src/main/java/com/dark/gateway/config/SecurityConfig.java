@@ -1,15 +1,16 @@
-package com.dark.gateway.filter;
+package com.dark.gateway.config;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import javax.crypto.SecretKey;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
@@ -23,11 +24,20 @@ import org.springframework.security.web.server.authentication.logout.RedirectSer
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.reactive.CorsConfigurationSource;
 import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
+
+import com.dark.gateway.filter.JwtAuthenticationFilter;
+
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 
+/**
+ * 安全配置：CORS、OAuth2 登录流程、JWT 签发与 Cookie 写入、白名单规则。
+ * <p>
+ * 注意：此类中的 JWT 签发逻辑属于 OAuth2 回调流程的基础设施职责，
+ * 不涉及领域业务逻辑，符合网关"零业务逻辑"原则。
+ */
 @Configuration
 @EnableWebFluxSecurity
 @Slf4j
@@ -138,7 +148,8 @@ public class SecurityConfig {
             String jsonResponse = String.format(
                     "{\"url\": \"%s\", \"message\": \"Authentication required\"}", loginUrl);
             byte[] bytes = jsonResponse.getBytes(StandardCharsets.UTF_8);
-            DataBuffer buffer = exchange.getResponse().bufferFactory().wrap(bytes);
+            org.springframework.core.io.buffer.DataBuffer buffer =
+                    exchange.getResponse().bufferFactory().wrap(bytes);
             return exchange.getResponse().writeWith(Mono.just(buffer));
         };
     }
@@ -155,28 +166,5 @@ public class SecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
         return source;
-    }
-
-    /**
-     * 日志过滤器：记录所有进入网关的请求路径
-     */
-    @Bean
-    @org.springframework.core.annotation.Order(-200) // 运行在所有过滤器之前
-    public org.springframework.web.server.WebFilter logFilter() {
-        return (exchange, chain) -> {
-            String path = exchange.getRequest().getURI().getPath();
-            String method = exchange.getRequest().getMethod().name();
-            
-            log.info("【网关请求】{} {}", method, path);
-            
-            return chain.filter(exchange).doFinally(signalType -> {
-                HttpStatus code = (HttpStatus) exchange.getResponse().getStatusCode();
-                if (code != null && code.isError()) {
-                    log.error("【网关响应异常】{} {} -> {}", method, path, code.value());
-                } else if (code != null) {
-                    log.info("【网关响应完成】{} {} -> {}", method, path, code.value());
-                }
-            });
-        };
     }
 }

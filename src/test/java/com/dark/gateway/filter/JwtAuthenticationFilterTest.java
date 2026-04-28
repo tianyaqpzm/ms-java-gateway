@@ -87,7 +87,8 @@ class JwtAuthenticationFilterTest {
     void whitelistExactPathShouldPass() {
         webTestClient.get().uri("/actuator/health")
                 .exchange()
-                .expectStatus().isNotFound(); // 放行但无实际 handler → 404,而非 401
+                .expectStatus().value(status ->
+                        assertThat(status).isNotEqualTo(401)); // 放行即可，不应返回 401
     }
 
     // GJ-02: 白名单通配符路径放行

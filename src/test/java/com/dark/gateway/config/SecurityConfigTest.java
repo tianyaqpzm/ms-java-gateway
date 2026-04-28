@@ -1,4 +1,4 @@
-package com.dark.gateway.filter;
+package com.dark.gateway.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

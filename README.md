@@ -1,7 +1,25 @@
-# 整体架构
+# ms-java-gateway
 
-**ces** 
+Spring Cloud Gateway 网关服务 —— 零业务逻辑的纯粹流量层。
 
+## 工程目录结构
+
+```
+src/main/java/com/dark/gateway/
+├── GatewayApplication.java           # 启动类
+├── config/                            # 配置层
+│   ├── SecurityConfig.java           # 安全配置：CORS、OAuth2、白名单
+│   ├── IgnoreWhiteProperties.java    # 白名单路径配置属性
+│   └── ResilienceConfig.java         # 容错与弹性配置
+├── filter/                            # 过滤器层
+│   ├── TraceIdFilter.java            # 链路追踪（Order -200）
+│   ├── JwtAuthenticationFilter.java  # JWT 认证（Order -100）
+│   └── RedirectSaveFilter.java       # OAuth2 重定向保存
+└── handler/                           # 处理器层
+    └── GatewayErrorHandler.java      # 统一错误响应
+```
+
+## 整体架构
 
 整体架构设计
 我们将系统分为四层：接入层、应用层、数据层、基础设施层。

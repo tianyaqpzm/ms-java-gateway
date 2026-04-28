@@ -18,6 +18,9 @@ spring:
         server-addr: ${NACOS_SERVER_ADDR}
         file-extension: yaml
     gateway:
+      httpclient:
+        connect-timeout: 3000     # 连接超时 3s
+        response-timeout: 30s     # 读取超时 30s（SSE 流需要较长时间）
       discovery:
         locator:
           enabled: true
