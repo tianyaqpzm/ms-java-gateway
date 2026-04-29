@@ -9,10 +9,12 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.core.Ordered;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.web.server.WebFilter;
-import com.dark.gateway.filter.IgnoreWhiteProperties;
+
+import com.dark.gateway.config.IgnoreWhiteProperties;
+import com.dark.gateway.config.SecurityConfig;
 import com.dark.gateway.filter.JwtAuthenticationFilter;
 import com.dark.gateway.filter.RedirectSaveFilter;
-import com.dark.gateway.filter.SecurityConfig;
+import com.dark.gateway.filter.TraceIdFilter;
 
 /**
  * 架构守护测试：确保 Bean 装配、接口契约、架构约束不被破坏。
@@ -71,5 +73,15 @@ public class ArchitectureGuardTest {
             hasServlet = false;
         }
         assertThat(hasServlet).as("Gateway 是 WebFlux 架构，不应引入 Servlet 栈").isFalse();
+    }
+
+    // GA-06: TraceIdFilter 注册为 WebFilter 且 order = -200
+    @Test
+    @DisplayName("GA-06: TraceIdFilter 是 WebFilter 且 order=-200")
+    public void traceIdFilterShouldBeWebFilterWithCorrectOrder() {
+        TraceIdFilter filter = ctx.getBean(TraceIdFilter.class);
+        assertThat(filter).isInstanceOf(WebFilter.class);
+        assertThat(filter).isInstanceOf(Ordered.class);
+        assertThat(filter.getOrder()).isEqualTo(-200);
     }
 }

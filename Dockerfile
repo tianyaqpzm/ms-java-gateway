@@ -23,8 +23,10 @@ FROM eclipse-temurin:17-jre
 
 WORKDIR /app
 
-# 1. 创建非 root 用户
-RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+# 1. 创建非 root 用户并安装 curl (用于健康检查)
+RUN apt-get update && apt-get install -y curl && \
+    rm -rf /var/lib/apt/lists/* && \
+    groupadd -r appgroup && useradd -r -g appgroup appuser
 
 # 2. 从构建阶段复制 jar 包
 COPY --from=build /app/target/ms-java-gateway*.jar /app/ms-java-gateway.jar
@@ -37,7 +39,7 @@ RUN chmod +x /app/entrypoint.sh && \
     sed -i 's/\r$//' /app/entrypoint.sh
 
 # 设置环境变量
-ENV JAVA_OPTS="-Xmx128m -Xms128m -Xss256k -XX:+UseSerialGC -XX:MaxMetaspaceSize=64m -XX:TieredStopAtLevel=1 -Djava.security.egd=file:/dev/./urandom"
+ENV JAVA_OPTS="-Xmx256m -Xms256m -Xss256k -XX:+UseG1GC -XX:MaxMetaspaceSize=128m -XX:+HeapDumpOnOutOfMemoryError -XX:TieredStopAtLevel=1 -Djava.security.egd=file:/dev/./urandom"
 ENV APP_PORT=8281
 
 # 声明端口
