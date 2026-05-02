@@ -84,7 +84,6 @@ app:
         - /login/**
         - /error
         - /oauth2/**
-        - /logout
 
 logging:
   level:

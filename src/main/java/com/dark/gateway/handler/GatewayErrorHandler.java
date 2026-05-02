@@ -2,7 +2,6 @@ package com.dark.gateway.handler;
 
 import java.time.Instant;
 import java.util.Map;
-
 import org.springframework.boot.autoconfigure.web.WebProperties;
 import org.springframework.boot.autoconfigure.web.reactive.error.AbstractErrorWebExceptionHandler;
 import org.springframework.boot.web.reactive.error.ErrorAttributes;
@@ -19,9 +18,7 @@ import org.springframework.web.reactive.function.server.RouterFunction;
 import org.springframework.web.reactive.function.server.RouterFunctions;
 import org.springframework.web.reactive.function.server.ServerRequest;
 import org.springframework.web.reactive.function.server.ServerResponse;
-
 import com.dark.gateway.filter.TraceIdFilter;
-
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 
@@ -33,10 +30,8 @@ import reactor.core.publisher.Mono;
 @Order(-1)
 public class GatewayErrorHandler extends AbstractErrorWebExceptionHandler {
 
-    public GatewayErrorHandler(ErrorAttributes errorAttributes,
-                               WebProperties webProperties,
-                               ApplicationContext applicationContext,
-                               ServerCodecConfigurer serverCodecConfigurer) {
+    public GatewayErrorHandler(ErrorAttributes errorAttributes, WebProperties webProperties,
+            ApplicationContext applicationContext, ServerCodecConfigurer serverCodecConfigurer) {
         super(errorAttributes, webProperties.getResources(), applicationContext);
         super.setMessageWriters(serverCodecConfigurer.getWriters());
         super.setMessageReaders(serverCodecConfigurer.getReaders());
@@ -52,27 +47,23 @@ public class GatewayErrorHandler extends AbstractErrorWebExceptionHandler {
 
         HttpStatusCode statusCode = determineHttpStatus(error);
         int statusValue = statusCode.value();
-        String reasonPhrase = statusCode instanceof HttpStatus httpStatus
-                ? httpStatus.getReasonPhrase()
-                : "Error";
 
         String traceId = request.headers().firstHeader(TraceIdFilter.TRACE_ID_HEADER);
 
-        log.error("【网关异常】{} {} -> {} traceId={}, error={}",
-                request.method(), request.path(), statusValue,
-                traceId != null ? traceId : "N/A", error.getMessage());
+        if (statusValue >= 500) {
+            log.error("【网关异常】{} {} -> {} traceId={}", request.method(), request.path(), statusValue,
+                    traceId != null ? traceId : "N/A", error);
+        } else {
+            log.error("【网关异常】{} {} -> {} traceId={}, error={}", request.method(), request.path(),
+                    statusValue, traceId != null ? traceId : "N/A", error.getMessage());
+        }
 
-        Map<String, Object> errorBody = Map.of(
-                "traceId", traceId != null ? traceId : "",
-                "status", statusValue,
-                "error", reasonPhrase,
-                "message", sanitizeMessage(error),
-                "path", request.path(),
-                "timestamp", Instant.now().toString()
-        );
+        Map<String, Object> errorBody = Map.of("traceId", traceId != null ? traceId : "", "status",
+                statusValue, "error_code", String.valueOf(statusValue), "error_msg",
+                sanitizeMessage(error), "path", request.path(), "timestamp",
+                Instant.now().toString());
 
-        return ServerResponse.status(statusCode)
-                .contentType(MediaType.APPLICATION_JSON)
+        return ServerResponse.status(statusCode).contentType(MediaType.APPLICATION_JSON)
                 .body(BodyInserters.fromValue(errorBody));
     }
 
