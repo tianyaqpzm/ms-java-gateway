@@ -20,7 +20,7 @@ spring:
     gateway:
       httpclient:
         connect-timeout: 3000     # 连接超时 3s
-        response-timeout: 30s     # 读取超时 30s（SSE 流需要较长时间）
+        response-timeout: ${GATEWAY_RESPONSE_TIMEOUT:300s} # 读取超时（SSE 流需要较长时间，默认 5min）
       discovery:
         locator:
           enabled: true
@@ -84,6 +84,7 @@ app:
         - /login/**
         - /error
         - /oauth2/**
+        - /.well-known/**
 
 logging:
   level:
