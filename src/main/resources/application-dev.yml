@@ -1,0 +1,7 @@
+spring:
+  security:
+    oauth2:
+      client:
+        provider:
+          casdoor:
+            issuer-uri: https://tao-lan.122577.xyz:8381

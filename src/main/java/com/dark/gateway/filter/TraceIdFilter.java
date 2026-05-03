@@ -26,11 +26,10 @@ public class TraceIdFilter implements WebFilter, Ordered {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
-        String traceId = exchange.getRequest().getHeaders().getFirst(TRACE_ID_HEADER);
-
-        if (traceId == null || traceId.isBlank()) {
-            traceId = UUID.randomUUID().toString().replace("-", "");
-        }
+        String originalTraceId = exchange.getRequest().getHeaders().getFirst(TRACE_ID_HEADER);
+        final String traceId = (originalTraceId == null || originalTraceId.isBlank())
+                ? UUID.randomUUID().toString().replace("-", "")
+                : originalTraceId;
 
         ServerHttpRequest mutatedRequest = exchange.getRequest().mutate()
                 .header(TRACE_ID_HEADER, traceId)
@@ -43,9 +42,17 @@ public class TraceIdFilter implements WebFilter, Ordered {
                 ? exchange.getRequest().getMethod().name() : "UNKNOWN";
         String path = exchange.getRequest().getURI().getPath();
 
-        log.info("【Trace】{} {} traceId={}", method, path, traceId);
+        long startTime = System.currentTimeMillis();
+        log.info("【网关请求】{} {} traceId={}", method, path, traceId);
 
-        return chain.filter(exchange.mutate().request(mutatedRequest).build());
+        return chain.filter(exchange.mutate().request(mutatedRequest).build())
+                .doFinally(signalType -> {
+                    long duration = System.currentTimeMillis() - startTime;
+                    int statusCode = exchange.getResponse().getStatusCode() != null
+                            ? exchange.getResponse().getStatusCode().value() : 0;
+                    log.info("【网关响应完成】{} {} -> {} [{}ms] traceId={}",
+                            method, path, statusCode, duration, traceId);
+                });
     }
 
     @Override
