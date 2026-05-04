@@ -9,9 +9,15 @@ spring:
       password: ${NACOS_PASSWORD}
       server-addr: ${NACOS_SERVER_ADDR}
       discovery:
+        server-addr: ${NACOS_SERVER_ADDR}
+        namespace: ${NACOS_NAMESPACE}
         group: DEFAULT_GROUP
+        timeout: 10000
       config:
+        server-addr: ${NACOS_SERVER_ADDR}
+        namespace: ${NACOS_NAMESPACE}
         group: DEFAULT_GROUP
+        timeout: 10000
         file-extension: yaml
         import-check:
           enabled: true

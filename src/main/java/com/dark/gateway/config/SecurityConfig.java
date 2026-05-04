@@ -4,13 +4,11 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import javax.crypto.SecretKey;
-
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
@@ -21,13 +19,13 @@ import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.ServerAuthenticationEntryPoint;
 import org.springframework.security.web.server.authentication.ServerAuthenticationSuccessHandler;
 import org.springframework.security.web.server.authentication.logout.RedirectServerLogoutSuccessHandler;
+import org.springframework.security.web.server.authentication.logout.ServerLogoutSuccessHandler;
+import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatchers;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.reactive.CorsConfigurationSource;
 import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
-
 import com.dark.gateway.filter.JwtAuthenticationFilter;
 import com.dark.gateway.filter.RedirectSaveFilter;
-
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
@@ -85,8 +83,20 @@ public class SecurityConfig {
                         .authenticationSuccessHandler(authenticationSuccessHandler()))
                 .exceptionHandling(exceptionHandling -> exceptionHandling
                         .authenticationEntryPoint(serverAuthenticationEntryPoint()))
-                .logout(logout -> logout.logoutUrl("/logout")
-                        .logoutSuccessHandler(new RedirectServerLogoutSuccessHandler()))
+                .logout(logout -> logout
+                        .requiresLogout(ServerWebExchangeMatchers.pathMatchers(HttpMethod.GET, "/logout"))
+                        .logoutHandler((webFilterExchange, authentication) -> {
+                            ResponseCookie jwtCookie = ResponseCookie.from("jwt_token", "")
+                                    .path("/")
+                                    .domain(cookieDomain)
+                                    .maxAge(0)
+                                    .httpOnly(true)
+                                    .secure(true)
+                                    .build();
+                            webFilterExchange.getExchange().getResponse().addCookie(jwtCookie);
+                            return Mono.empty();
+                        })
+                        .logoutSuccessHandler(logoutSuccessHandler()))
                 .build();
     }
 
@@ -149,6 +159,15 @@ public class SecurityConfig {
                     .setLocation(URI.create(finalRedirectUri));
             return Mono.empty();
         };
+    }
+
+    /**
+     * 登出成功处理器：重定向回前端
+     */
+    private ServerLogoutSuccessHandler logoutSuccessHandler() {
+        RedirectServerLogoutSuccessHandler handler = new RedirectServerLogoutSuccessHandler();
+        handler.setLogoutSuccessUrl(URI.create(frontendUrl));
+        return handler;
     }
 
     private ServerAuthenticationEntryPoint serverAuthenticationEntryPoint() {

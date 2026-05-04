@@ -44,9 +44,14 @@ trigger: always_on
    - **鲁棒断言**: 针对 Filter 的功能测试，断言应侧重于 Filter 是否正确放行或拦截（例如断言 `status != 401`），而非具体的下游业务返回码（如 500/404），除非是测试特定的错误处理器。
    - **OIDC 配置隔离**: 禁止将 Auth0/OIDC 的 `issuer-uri` 放置在 `application.yml` (通用配置) 中，这会触发测试环境下的自动发现尝试。
    - **生产配置提取**: `issuer-uri` 必须仅存在于 `application-prod.yml` 或特定部署 profile 中。测试环境下必须在 `application-test.yml` 显式 Mock 所有的 OIDC 端点（如 `authorization-uri`, `token-uri`）。
+   - **无状态化断言**: 网关已重构为无状态（Cookie 存储），测试用例必须校验 Cookie (如 `redirect_uri`) 而非 `WebSession` 属性。
 
 7. **可观测性与部署 (Observability & Deployment)**:
    - **请求流转日志**: 关键的网关入口请求（`【网关请求】`）和出口响应（`【网关响应完成】`）必须使用 `INFO` 级别，以确保在生产环境下能追踪请求链路。
+   - **JVM 内存红线**: 在使用 Spring Boot 3 + OAuth2 Client 架构时，`MaxMetaspaceSize` 严禁低于 `128m`。推荐配置：`-Xmx256m -Xms256m -XX:MaxMetaspaceSize=128m -XX:+UseG1GC`。
+
+8. **统一错误处理 (Error Handling)**:
+   - **堆栈追踪**: 针对异常请求（如后端连接超时、不可达），`GatewayErrorHandler` 必须记录关键的异常信息，以便精准排查网关层面的连接异常。
 
 # Key Context (关键背景)
 该网关 (`ms-java-gateway`) 位于前端与后端服务之间。它是系统唯一的对外流量入口，负责统一的路由分发、流量控制，并对接 Casdoor 执行集中式的安全拦截与认证鉴权。它必须能高效处理高并发的长连接（如 SSE 流）。
