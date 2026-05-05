@@ -192,6 +192,7 @@ public class SecurityConfig {
         config.addAllowedOriginPattern("*");
         config.addAllowedHeader("*");
         config.addAllowedMethod("*");
+        config.setAllowPrivateNetwork(true);
         config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
