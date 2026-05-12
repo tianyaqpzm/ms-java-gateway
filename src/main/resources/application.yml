@@ -46,7 +46,7 @@ spring:
         - id: biz-v1-route
           uri: lb://ms-java-biz
           predicates:
-            - Path=/rest/dark/v1/**
+            - Path=/rest/dark/v1/**, /rest/biz/v1/**
           filters:
             - StripPrefix=0
         
