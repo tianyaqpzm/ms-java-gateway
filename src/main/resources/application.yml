@@ -46,6 +46,7 @@ spring:
         - id: biz-v1-route
           uri: lb://ms-java-biz
           predicates:
+            # 逗号后面严禁出现空格。由于逗号后带了空格，YAML 解析器会将第二个模式识别为 " /rest/biz/v1/**"（带前导空格）
             - Path=/rest/dark/v1/**,/rest/biz/v1/**
           filters:
             - StripPrefix=0
