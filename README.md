@@ -35,7 +35,7 @@ http://localhost:8281/login/oauth2/code/casdoor?code=c299573ff****************c9
 透传 (Relay)：网关将 JWT 放入 HTTP Header，转发给下游的 Python/Java 服务。
 
 
-```Mermaid
+```mermaid
 sequenceDiagram
     autonumber
     actor User as 用户 (User/Browser)
@@ -83,7 +83,7 @@ sequenceDiagram
 
 #### 时序图
 核心时序图：Spring Cloud Gateway + Casdoor + GitHub SSO
-```Mermaid
+```mermaid
 sequenceDiagram
     autonumber
     actor User as 用户 (Browser)
@@ -144,7 +144,7 @@ SSO 的魔法在于 Casdoor 的全局 Session (Cookie)。
 当用户访问应用 B 时，浏览器自动带上这张“全局门票”。
 Casdoor 认出了门票，直接放行，跳过了输入密码的步骤。
 
-```Mermaid
+```mermaid
 sequenceDiagram
     autonumber
     actor User as 用户 (Browser)
@@ -201,8 +201,8 @@ sequenceDiagram
 
 
 
-[Mermaid地址](https://mermaid.ai/app/projects/a2d2c1bf-fa7d-4bc5-a183-c94a3dd48f2c/diagrams/df70991c-1474-4514-b0bb-d50b92c7770e/version/v0.1/edit)
-```Mermaid
+[mermaid地址](https://mermaid.ai/app/projects/a2d2c1bf-fa7d-4bc5-a183-c94a3dd48f2c/diagrams/df70991c-1474-4514-b0bb-d50b92c7770e/version/v0.1/edit)
+```mermaid
 graph TD
     %% 样式定义
     classDef java fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
@@ -267,7 +267,7 @@ Discovery: Python 问“你会啥？”，Java 答“我会查订单”。
 
 Execution: Python 说“查一下 CN-8888”，Java 查完把结果推回来。
 
-```Mermaid
+```mermaid
 sequenceDiagram
     autonumber
     participant Py as Python Client<br>(MCP Client)
@@ -320,7 +320,7 @@ sequenceDiagram
 
 下半部分（橙色区域）：用户回头看历史，Java 直接去数据库捞数据展示。
 
-```Mermaid
+```mermaid
 sequenceDiagram
     autonumber
     actor User as 用户 (User)
