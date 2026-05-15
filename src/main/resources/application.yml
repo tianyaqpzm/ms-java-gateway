@@ -19,7 +19,7 @@ spring:
         file-extension: yaml
     gateway:
       httpclient:
-        connect-timeout: 3000     # 连接超时 3s
+        connect-timeout: 10000    # 连接超时增加到 10s，应对 VPN 抖动
         response-timeout: ${GATEWAY_RESPONSE_TIMEOUT:300s} # 读取超时（SSE 流需要较长时间，默认 5min）
       discovery:
         locator:
