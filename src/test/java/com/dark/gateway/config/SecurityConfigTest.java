@@ -68,4 +68,13 @@ class SecurityConfigTest {
         assertThat(webSessionIdResolver)
                 .isInstanceOf(org.springframework.web.server.session.CookieWebSessionIdResolver.class);
     }
+
+    // GS-05: favicon.ico 请求直接返回 204 No Content
+    @Test
+    @DisplayName("GS-05: 请求 favicon.ico 应该直接返回 204 No Content")
+    void faviconRequestShouldReturn204() {
+        webTestClient.get().uri("/favicon.ico")
+                .exchange()
+                .expectStatus().isNoContent();
+    }
 }
