@@ -12,12 +12,12 @@ spring:
         server-addr: ${NACOS_SERVER_ADDR}
         namespace: ${NACOS_NAMESPACE}
         group: DEFAULT_GROUP
-        timeout: 10000
+        timeout: 30000
       config:
         server-addr: ${NACOS_SERVER_ADDR}
         namespace: ${NACOS_NAMESPACE}
         group: DEFAULT_GROUP
-        timeout: 10000
+        timeout: 30000
         file-extension: yaml
         import-check:
           enabled: true

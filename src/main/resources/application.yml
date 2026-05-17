@@ -19,7 +19,7 @@ spring:
         file-extension: yaml
     gateway:
       httpclient:
-        connect-timeout: 3000     # 连接超时 3s
+        connect-timeout: 10000    # 连接超时增加到 10s，应对 VPN 抖动
         response-timeout: ${GATEWAY_RESPONSE_TIMEOUT:300s} # 读取超时（SSE 流需要较长时间，默认 5min）
       discovery:
         locator:
@@ -33,21 +33,21 @@ spring:
           filters:
             - StripPrefix=2
 
-        # Agent Route: Forward /rest/dark/v1/agent/** to ms-py-agent
-        # ⚠️ 必须在 biz-v1-route 之前声明，否则 /rest/dark/v1/** 会先匹配
+        # Agent Route: Forward /rest/agent/v1/** to ms-py-agent
         - id: agent-route
           uri: lb://ms-py-agent
           predicates:
-            - Path=/rest/dark/v1/agent/**
+            - Path=/rest/agent/v1/**
           filters:
             - StripPrefix=0
 
-        # Biz V1 Route: Forward /rest/dark/v1/** to ms-java-biz
+        # Biz V1 Route: Forward /rest/biz/v1/** to ms-java-biz
         - id: biz-v1-route
           uri: lb://ms-java-biz
           predicates:
             # 逗号后面严禁出现空格。由于逗号后带了空格，YAML 解析器会将第二个模式识别为 " /rest/biz/v1/**"（带前导空格）
-            - Path=/rest/dark/v1/**,/rest/biz/v1/**
+            # - Path=/rest/dark/v1/**,/rest/biz/v1/**
+            - Path=/rest/biz/v1/**
           filters:
             - StripPrefix=0
         
